@@ -1,12 +1,12 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
-import { Filter, Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { RestoreCharacterButton } from "@/components/characters/restore-character-button";
+import { DashboardControls } from "@/components/dashboard/dashboard-controls";
 import { requirePageUser } from "@/server/page-auth";
 import { getActiveWorkspace } from "@/server/authz";
 import { getTranslator } from "@/i18n/server";
@@ -162,45 +162,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         {hasWritableWorkspace && <Button asChild><Link href="/characters/new"><Plus className="h-4 w-4" />{t("dashboard.newCharacter")}</Link></Button>}
       </div>
 
-      <form className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]" action="/">
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9" name="q" defaultValue={query} placeholder={t("dashboard.searchPlaceholder")} />
-        </div>
-        {hasWritableWorkspace && (
-          <label className="flex items-center gap-2 rounded-md border bg-card px-3 text-sm">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <select className="h-9 bg-transparent outline-none" name="owner" defaultValue={ownerFilter}>
-              <option value="all">{t("dashboard.allActive")}</option>
-              <option value="unassigned">{t("dashboard.unassigned")}</option>
-              <option value="archived">{t("dashboard.archived")}</option>
-              {players.map((player) => (
-                <option key={player.id} value={player.id}>
-                  {player.name ?? player.email}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className="rounded-md border bg-card px-3 text-sm">
-          <select className="h-9 bg-transparent outline-none" name="sort" defaultValue={sort}>
-            <option value="updated">{t("dashboard.sort.updated")}</option>
-            <option value="created">{t("dashboard.sort.created")}</option>
-            <option value="name">{t("dashboard.sort.name")}</option>
-            <option value="nodes">{t("dashboard.sort.nodes")}</option>
-            <option value="effects">{t("dashboard.sort.effects")}</option>
-          </select>
-        </label>
-        <div className="flex gap-2">
-          <Button type="submit">
-            <Search className="h-4 w-4" />
-            {t("common.apply")}
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/">{t("common.reset")}</Link>
-          </Button>
-        </div>
-      </form>
+      <DashboardControls
+        initialQuery={query}
+        initialOwner={ownerFilter}
+        initialSort={sort}
+        hasWritableWorkspace={hasWritableWorkspace}
+        players={players.map((player) => ({ id: player.id, label: player.name ?? player.email ?? t("common.unknown") }))}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
         <span>

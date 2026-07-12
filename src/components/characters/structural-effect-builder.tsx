@@ -8,6 +8,7 @@ import type { CharacterNodeModel, NodeType } from "@/domain/nodes";
 import { getStructuralPatchFields, type PatchFieldDefinition } from "@/domain/node-patches";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
 import { NodeIconPicker } from "@/components/characters/node-icons";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
@@ -53,8 +54,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes }: Stru
     setError(null);
     const targetValue = String(data.get("targetNodeId") ?? "");
     const targetNodeIdValue = targetValue === "__ROOT__" ? null : targetValue;
-    const conditionNodeId = String(data.get("conditionNodeId") || "");
-    const condition = conditionNodeId ? { kind: "fieldExists", nodeId: conditionNodeId } : { kind: "always" };
+    const condition = readEffectCondition(data);
     const createType = operation === "CREATE_GROUP" ? "GROUP" : nodeType;
     const base = { name: data.get("name"), operation, targetNodeId: targetNodeIdValue, condition };
 
@@ -135,10 +135,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes }: Stru
         />
       )}
 
-      <select name="conditionNodeId" className={selectClass}>
-        <option value="">{t("effect.conditionAlways")}</option>
-        {nodes.map((node) => <option key={node.id} value={node.id}>{t("effect.conditionExistsPrefix", { name: node.name })}</option>)}
-      </select>
+      <EffectConditionBuilder nodes={nodes} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button disabled={pending}>
         <Plus className="h-4 w-4" />

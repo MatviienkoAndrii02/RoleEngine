@@ -181,15 +181,39 @@ test("accepts a numeric effect targeting Bar min", () => {
   assert.equal(result.numericField, "min");
 });
 
-test("rejects numeric source fields on structural patches", () => {
-  assert.throws(() => createEffectCommandSchema.parse({
-    name: "Broken dynamic patch",
+test("accepts dynamic structural patch with complex conditions", () => {
+  const result = createEffectCommandSchema.parse({
+    name: "Dynamic mana description",
     operation: "PATCH_NODE_PROPS",
     targetNodeId: "mana",
-    condition: { kind: "always" },
+    source: {
+      kind: "formula",
+      expression: {
+        kind: "multiply",
+        left: { kind: "ref", nodeId: "intelligence", field: "value" },
+        right: { kind: "const", value: 10 },
+      },
+    },
+    condition: {
+      kind: "and",
+      conditions: [
+        {
+          kind: "compare",
+          nodeId: "intelligence",
+          operator: "gt",
+          value: { kind: "number", value: 0 },
+        },
+        {
+          kind: "not",
+          condition: { kind: "fieldExists", nodeId: "anti_magic" },
+        },
+      ],
+    },
     patch: {},
     patchFromSource: { field: "max" },
-  }));
+  });
+  assert.equal(result.operation, "PATCH_NODE_PROPS");
+  assert.equal(result.condition.kind, "and");
 });
 
 test("accepts a full effect replacement", () => {

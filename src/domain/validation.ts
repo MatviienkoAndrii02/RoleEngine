@@ -230,9 +230,11 @@ export const structuralEffectCommandSchema = z.object({
   name: nameSchema,
   operation: z.enum(["CREATE_NODE", "CREATE_GROUP", "PATCH_NODE_PROPS"]),
   targetNodeId: idSchema.nullable().optional(),
+  source: effectSourceSchema.optional(),
   condition: effectConditionSchema,
   createNode: createNodePayloadSchema.optional(),
   patch: z.record(z.string(), z.json()).optional(),
+  patchFromSource: z.object({ field: idSchema }).strict().optional(),
 }).strict().superRefine((value, context) => {
   if (value.operation !== "PATCH_NODE_PROPS" && !value.createNode) {
     context.addIssue({ code: "custom", path: ["createNode"], message: "Node payload is required" });
