@@ -78,6 +78,8 @@ test("validates table columns and typed cells", () => {
 test("rejects empty updates and unknown fields", () => {
   assert.throws(() => updateNodeCommandSchema.parse({}));
   assert.throws(() => updateNodeCommandSchema.parse({ name: "Valid", characterId: "spoofed" }));
+  assert.equal(updateNodeCommandSchema.parse({ parentId: null }).parentId, null);
+  assert.equal(updateNodeCommandSchema.parse({ parentId: "new_parent" }).parentId, "new_parent");
 });
 
 test("validates character settings updates", () => {

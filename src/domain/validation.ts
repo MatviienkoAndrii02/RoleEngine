@@ -120,8 +120,9 @@ export const createNodeCommandSchema = z.discriminatedUnion("type", [
 
 export const updateNodeCommandSchema = z.object({
   name: nameSchema.optional(),
+  parentId: idSchema.nullable().optional(),
   data: z.unknown().optional(),
-}).strict().refine((value) => value.name !== undefined || value.data !== undefined, {
+}).strict().refine((value) => value.name !== undefined || value.parentId !== undefined || value.data !== undefined, {
   message: "At least one field must be provided",
 });
 

@@ -7,6 +7,8 @@ import { requireGM, requirePrimaryWritableWorkspace, requireTemplateGM } from "@
 import { writeAudit } from "@/server/audit";
 import { slugify } from "@/server/template-copy";
 import { parseNodeData } from "@/domain/validation";
+import { collectSubtreeIds } from "@/domain/tree";
+import { appError } from "@/server/errors";
 
 export async function createTemplate(input: {
   kind: TemplateKind;
@@ -117,7 +119,7 @@ export async function archiveTemplate(templateId: string) {
   revalidatePath("/templates");
 }
 
-export async function updateTemplateNode(input: { templateId: string; nodeId: string; name?: string; data?: unknown }) {
+export async function updateTemplateNode(input: { templateId: string; nodeId: string; name?: string; parentId?: string | null; data?: unknown }) {
   const actor = await requireGM();
   const { template } = await requireTemplateGM(input.templateId);
   const current = await prisma.templateNode.findFirstOrThrow({
@@ -125,19 +127,37 @@ export async function updateTemplateNode(input: { templateId: string; nodeId: st
   });
   const name = input.name?.trim();
   if (input.name !== undefined && !name) throw new Error("Node name is required");
-  const nextPath = name ? `${current.path.includes("/") ? current.path.slice(0, current.path.lastIndexOf("/") + 1) : ""}${slugify(name)}` : current.path;
   const data = input.data === undefined
     ? undefined
     : parseNodeData(current.type, input.data) as Prisma.InputJsonValue;
+  const parentChanged = input.parentId !== undefined && input.parentId !== current.parentId;
+  const nextParentId = input.parentId === undefined ? current.parentId : input.parentId;
+  const allNodes = await prisma.templateNode.findMany({
+    where: { templateId: current.templateId },
+    select: { id: true, parentId: true },
+  });
+  const subtreeIds = collectSubtreeIds(allNodes, current.id);
+  if (nextParentId && subtreeIds.includes(nextParentId)) {
+    throw appError("BAD_REQUEST", "A node cannot be moved inside itself or its descendants");
+  }
+  const nextParent = nextParentId
+    ? await prisma.templateNode.findFirstOrThrow({ where: { id: nextParentId, templateId: input.templateId } })
+    : null;
+  const nextSlug = name ? slugify(name) : current.slug ?? slugify(current.name);
+  const nextPath = nextParent ? `${nextParent.path}/${nextSlug}` : nextSlug;
   const node = await prisma.$transaction(async (tx) => {
-    const updated = await tx.templateNode.update({ where: { id: current.id }, data: { name, slug: name ? slugify(name) : undefined, path: nextPath, data } });
+    const order = parentChanged
+      ? await tx.templateNode.count({ where: { templateId: current.templateId, parentId: nextParentId ?? null } })
+      : undefined;
+    const updated = await tx.templateNode.update({ where: { id: current.id }, data: { name, parentId: parentChanged ? nextParentId : undefined, slug: name ? nextSlug : undefined, path: nextPath, order, data } });
     if (nextPath !== current.path) {
-      const descendants = await tx.templateNode.findMany({ where: { templateId: current.templateId, path: { startsWith: `${current.path}/` } } });
+      const descendantIds = subtreeIds.filter((id) => id !== current.id);
+      const descendants = await tx.templateNode.findMany({ where: { templateId: current.templateId, id: { in: descendantIds } } });
       for (const descendant of descendants) await tx.templateNode.update({ where: { id: descendant.id }, data: { path: `${nextPath}${descendant.path.slice(current.path.length)}` } });
     }
     return updated;
   });
-  await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "TemplateNode", entityId: node.id, action: "UPDATE", oldValue: { name: current.name, data: current.data }, newValue: { name: node.name, data: node.data } });
+  await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "TemplateNode", entityId: node.id, action: "UPDATE", oldValue: { name: current.name, parentId: current.parentId, data: current.data }, newValue: { name: node.name, parentId: node.parentId, data: node.data } });
   revalidatePath(`/templates/${current.templateId}`);
   return node;
 }

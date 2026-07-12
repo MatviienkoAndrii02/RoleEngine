@@ -295,6 +295,7 @@ export async function updateCharacterNode(input: {
   characterId: string;
   nodeId: string;
   name?: string;
+  parentId?: string | null;
   data?: unknown;
 }) {
   const actor = await requireGM();
@@ -304,20 +305,36 @@ export async function updateCharacterNode(input: {
   });
   const name = input.name?.trim();
   if (input.name !== undefined && !name) throw new Error("Node name is required");
-  const nextPath = name
-    ? `${current.path.includes("/") ? current.path.slice(0, current.path.lastIndexOf("/") + 1) : ""}${slugify(name)}`
-    : current.path;
   const data = input.data === undefined
     ? undefined
     : parseNodeData(current.type, input.data) as Prisma.InputJsonValue;
+  const parentChanged = input.parentId !== undefined && input.parentId !== current.parentId;
+  const nextParentId = input.parentId === undefined ? current.parentId : input.parentId;
+  const allNodes = await prisma.characterNode.findMany({
+    where: { characterId: current.characterId, archivedAt: null },
+    select: { id: true, parentId: true },
+  });
+  const subtreeIds = collectSubtreeIds(allNodes, current.id);
+  if (nextParentId && subtreeIds.includes(nextParentId)) {
+    throw appError("BAD_REQUEST", "A node cannot be moved inside itself or its descendants");
+  }
+  const nextParent = nextParentId
+    ? await prisma.characterNode.findFirstOrThrow({ where: { id: nextParentId, characterId: input.characterId, archivedAt: null } })
+    : null;
+  const nextSlug = name ? slugify(name) : current.slug ?? slugify(current.name);
+  const nextPath = nextParent ? `${nextParent.path}/${nextSlug}` : nextSlug;
   const node = await prisma.$transaction(async (tx) => {
+    const order = parentChanged
+      ? await tx.characterNode.count({ where: { characterId: current.characterId, parentId: nextParentId ?? null, archivedAt: null } })
+      : undefined;
     const updated = await tx.characterNode.update({
       where: { id: input.nodeId },
-      data: { name, slug: name ? slugify(name) : undefined, path: nextPath, data }
+      data: { name, parentId: parentChanged ? nextParentId : undefined, slug: name ? nextSlug : undefined, path: nextPath, order, data }
     });
     if (nextPath !== current.path) {
+      const descendantIds = subtreeIds.filter((id) => id !== current.id);
       const descendants = await tx.characterNode.findMany({
-        where: { characterId: current.characterId, path: { startsWith: `${current.path}/` } }
+        where: { characterId: current.characterId, id: { in: descendantIds } }
       });
       for (const descendant of descendants) {
         await tx.characterNode.update({
@@ -336,8 +353,8 @@ export async function updateCharacterNode(input: {
     entityType: "CharacterNode",
     entityId: current.id,
     action: "UPDATE",
-    oldValue: { name: current.name, data: current.data },
-    newValue: { name: node.name, data: node.data }
+    oldValue: { name: current.name, parentId: current.parentId, data: current.data },
+    newValue: { name: node.name, parentId: node.parentId, data: node.data }
   });
 
   revalidatePath(`/characters/${current.characterId}`);

@@ -39,8 +39,12 @@ export function NodeEditor({ characterId, templateId, nodes }: { characterId?: s
     setPending(true);
     setError(null);
     const type = String(formData.get("type")) as NodeType;
-    const payload = { name: String(formData.get("name")), data: readNodeData(type, formData) };
     const editing = mode === "edit" && selected;
+    const payload = {
+      name: String(formData.get("name")),
+      data: readNodeData(type, formData),
+      ...(editing ? { parentId: formData.get("parentId") || null } : {}),
+    };
     const response = await fetch(
       editing ? `${apiBase}/${selected.id}` : apiBase,
       {
@@ -83,6 +87,7 @@ export function NodeEditor({ characterId, templateId, nodes }: { characterId?: s
         nodes={nodes}
         active={active}
         selectedParentId={mode === "add" ? selected?.id : null}
+        rootLabel={templateId ? t("common.rootTemplate") : t("common.rootCharacter")}
         pending={pending}
         error={error}
         submit={submit}
@@ -93,10 +98,11 @@ export function NodeEditor({ characterId, templateId, nodes }: { characterId?: s
   );
 }
 
-function NodeForm({ nodes, active, selectedParentId, pending, error, submit, cancel, remove }: {
+function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, submit, cancel, remove }: {
   nodes: CharacterNodeModel[];
   active: CharacterNodeModel | null;
   selectedParentId: string | null | undefined;
+  rootLabel: string;
   pending: boolean;
   error: string | null;
   submit: (data: FormData) => void;
@@ -106,6 +112,7 @@ function NodeForm({ nodes, active, selectedParentId, pending, error, submit, can
   const { t } = useI18n();
   const initialType = active?.type ?? "NUMBER";
   const [type, setType] = useState<NodeType>(initialType);
+  const parentOptions = active ? nodes.filter((node) => canUseAsParent(node, active, nodes)) : nodes;
 
   useEffect(() => {
     setType(initialType);
@@ -114,15 +121,13 @@ function NodeForm({ nodes, active, selectedParentId, pending, error, submit, can
   return (
     <form action={submit} className="space-y-4">
       <FormField label={t("common.name")} name="name" required defaultValue={active?.name} />
-      {!active && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="parentId">{t("node.parent")}</label>
-          <select id="parentId" name="parentId" defaultValue={selectedParentId ?? ""} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
-            <option value="">{t("common.rootCharacter")}</option>
-            {nodes.map((node) => <option key={node.id} value={node.id}>{getNodeBreadcrumb(node, nodes)}</option>)}
-          </select>
-        </div>
-      )}
+      <div className="space-y-2">
+        <label className="text-sm font-medium" htmlFor="parentId">{t("node.parent")}</label>
+        <select id="parentId" name="parentId" defaultValue={active?.parentId ?? selectedParentId ?? ""} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+          <option value="">{rootLabel}</option>
+          {parentOptions.map((node) => <option key={node.id} value={node.id}>{getNodeBreadcrumb(node, nodes)}</option>)}
+        </select>
+      </div>
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="node-type">{t("common.type")}</label>
         {active && <input type="hidden" name="type" value={type} />}
@@ -214,4 +219,16 @@ function getNodeBreadcrumb(node: CharacterNodeModel, nodes: CharacterNodeModel[]
     parentId = parent.parentId;
   }
   return names.join(" / ");
+}
+
+function canUseAsParent(candidate: CharacterNodeModel, active: CharacterNodeModel, nodes: CharacterNodeModel[]) {
+  if (candidate.id === active.id) return false;
+  let parentId = candidate.parentId;
+  const visited = new Set<string>();
+  while (parentId && !visited.has(parentId)) {
+    if (parentId === active.id) return false;
+    visited.add(parentId);
+    parentId = nodes.find((node) => node.id === parentId)?.parentId ?? null;
+  }
+  return true;
 }
