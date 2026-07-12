@@ -1,0 +1,66 @@
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
+import type { CharacterNodeModel } from "@/domain/nodes";
+import { getNumericPatchFields } from "@/domain/node-patches";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { localizedApiError } from "@/i18n/api-errors";
+import { useI18n } from "@/i18n/client";
+
+type NumericEffectBuilderProps =
+  | { characterId: string; templateId?: never; nodes: CharacterNodeModel[] }
+  | { templateId: string; characterId?: never; nodes: CharacterNodeModel[] };
+
+export function NumericEffectBuilder({ characterId, templateId, nodes }: NumericEffectBuilderProps) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const endpoint = characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`;
+  const numeric = nodes.filter((n) => n.type === "NUMBER" || n.type === "BAR");
+  const [targetNodeId, setTargetNodeId] = useState("");
+  const [sourceKind, setSourceKind] = useState("number");
+  const [conditionKind, setConditionKind] = useState("always");
+  const [join, setJoin] = useState("single");
+  const [secondKind, setSecondKind] = useState("exists");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const targetNode = numeric.find((node) => node.id === targetNodeId) ?? null;
+  const targetFields = targetNode ? getNumericPatchFields(targetNode.type) : [];
+  const options = numeric.map((n) => <option key={n.id} value={n.id}>{n.name}</option>);
+
+  async function submit(data: FormData) {
+    setPending(true); setError(null);
+    const source = sourceKind === "number" ? { kind: "number", value: Number(data.get("sourceValue")) } : sourceKind === "node" ? { kind: "node", nodeId: String(data.get("sourceNodeId")), field: "value" } : { kind: "formula", expression: { kind: String(data.get("formulaOperator")), left: { kind: "ref", nodeId: String(data.get("formulaNodeId")), field: "value" }, right: { kind: "const", value: Number(data.get("formulaValue")) } } };
+    const first = condition(conditionKind, "first", data);
+    const second = condition(secondKind, "second", data);
+    const finalCondition = join === "single" ? first : join === "not" ? { kind: "not", condition: first } : { kind: join, conditions: [first, second] };
+    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: data.get("name"), operation: data.get("operation"), targetNodeId: data.get("targetNodeId"), numericField: data.get("numericField"), source, condition: finalCondition }) });
+    setPending(false); if (!response.ok) { setError(await localizedApiError(response, t, "effect.saveFailed")); return; } router.refresh();
+  }
+
+  return (
+    <form action={submit} className="space-y-3">
+      <Input name="name" required placeholder={t("effect.name")} />
+      <select name="targetNodeId" required value={targetNodeId} onChange={(event) => setTargetNodeId(event.target.value)} className={selectClass}>
+        <option value="">{t("effect.selectTarget")}</option>
+        {options}
+      </select>
+      <Select name="numericField" placeholder={t("effect.numericField")}>
+        {targetFields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}
+      </Select>
+      <Select name="operation"><option value="ADD">{t("effect.add")}</option><option value="SUBTRACT">{t("effect.subtract")}</option><option value="MULTIPLY">{t("effect.multiply")}</option><option value="PERCENT_BONUS">{t("effect.percentBonus")}</option><option value="SET_BAR_MAX">{t("effect.setNumericField")}</option></Select>
+      <select value={sourceKind} onChange={(e) => setSourceKind(e.target.value)} className={selectClass}><option value="number">{t("effect.sourceNumber")}</option><option value="node">{t("effect.sourceNode")}</option><option value="formula">{t("effect.sourceFormula")}</option></select>
+      {sourceKind === "number" ? <Input name="sourceValue" type="number" step="any" required placeholder={t("common.value")} /> : sourceKind === "node" ? <Select name="sourceNodeId">{options}</Select> : <div className="grid grid-cols-[1fr_auto_100px] gap-2"><Select name="formulaNodeId">{options}</Select><Select name="formulaOperator"><option value="add">+</option><option value="subtract">-</option><option value="multiply">x</option><option value="divide">/</option></Select><Input name="formulaValue" type="number" step="any" required /></div>}
+      <div className="grid grid-cols-2 gap-2"><select value={join} onChange={(e) => setJoin(e.target.value)} className={selectClass}><option value="single">{t("effect.singleCondition")}</option><option value="and">AND</option><option value="or">OR</option><option value="not">NOT</option></select><ConditionKind value={conditionKind} onChange={setConditionKind} /></div>
+      <ConditionFields kind={conditionKind} prefix="first" options={options} />
+      {(join === "and" || join === "or") && <><ConditionKind value={secondKind} onChange={setSecondKind} /><ConditionFields kind={secondKind} prefix="second" options={options} /></>}
+      {error && <p className="text-sm text-destructive">{error}</p>}<Button disabled={pending}><Plus className="h-4 w-4" />{pending ? t("effect.checking") : t("effect.addEffect")}</Button>
+    </form>
+  );
+}
+const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
+function Select({ name, placeholder, children }: { name: string; placeholder?: string; children: React.ReactNode }) { return <select name={name} required className={selectClass}>{placeholder && <option value="">{placeholder}</option>}{children}</select>; }
+function ConditionKind({ value, onChange }: { value: string; onChange: (v: string) => void }) { const { t } = useI18n(); return <select value={value} onChange={(e) => onChange(e.target.value)} className={selectClass}><option value="always">{t("effect.conditionAlways")}</option><option value="exists">{t("effect.conditionExists")}</option><option value="gt">{t("effect.conditionGt")}</option><option value="lt">{t("effect.conditionLt")}</option><option value="eq">{t("effect.conditionEq")}</option></select>; }
+function ConditionFields({ kind, prefix, options }: { kind: string; prefix: string; options: React.ReactNode }) { const { t } = useI18n(); if (kind === "always") return null; return <div className="grid grid-cols-2 gap-2"><Select name={`${prefix}NodeId`}>{options}</Select>{kind !== "exists" && <Input name={`${prefix}Value`} type="number" step="any" required placeholder={t("common.value")} />}</div>; }
+function condition(kind: string, prefix: string, data: FormData): object { if (kind === "always") return { kind: "always" }; if (kind === "exists") return { kind: "fieldExists", nodeId: String(data.get(`${prefix}NodeId`)) }; return { kind: "compare", nodeId: String(data.get(`${prefix}NodeId`)), operator: kind, value: { kind: "number", value: Number(data.get(`${prefix}Value`)) } }; }

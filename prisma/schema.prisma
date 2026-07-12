@@ -1,0 +1,324 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceRole {
+  OWNER
+  GM
+  PLAYER
+}
+
+enum NodeType {
+  NUMBER
+  BAR
+  TEXT
+  TABLE
+  CONTAINER
+  GROUP
+}
+
+enum TemplateKind {
+  CHARACTER
+  ITEM
+  SKILL
+  PASSIVE_TALENT
+  MUTATION
+  BODY_PART
+  OTHER
+}
+
+enum EffectOperation {
+  ADD
+  SUBTRACT
+  MULTIPLY
+  PERCENT_BONUS
+  CREATE_NODE
+  CREATE_GROUP
+  SET_BAR_MAX
+  PATCH_NODE_PROPS
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  ASSIGN
+  APPLY_TEMPLATE
+  RECALCULATE
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  username      String    @unique
+  usernameKey   String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts             Account[]
+  sessions             Session[]
+  ownedCharacters      Character[]           @relation("CharacterOwner")
+  createdCharacters    Character[]           @relation("CharacterCreator")
+  characterAccess      CharacterAssignment[]
+  createdTemplates     EntityTemplate[]      @relation("TemplateCreator")
+  auditLogs            AuditLog[]            @relation("AuditActor")
+  workspaceMemberships WorkspaceMembership[]
+  ownedWorkspaces      Workspace[]           @relation("WorkspaceOwner")
+}
+
+model Workspace {
+  id         String    @id @default(cuid())
+  name       String
+  ownerId    String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
+  metadata   Json      @default("{}")
+
+  owner       User?                 @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  memberships WorkspaceMembership[]
+  characters  Character[]
+  templates   EntityTemplate[]
+  auditLogs   AuditLog[]
+
+  @@index([ownerId])
+  @@index([name])
+}
+
+model WorkspaceMembership {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId, role])
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model Character {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  ownerId     String?
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
+  metadata    Json      @default("{}")
+
+  workspace    Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  owner        User?                 @relation("CharacterOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy    User                  @relation("CharacterCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  rootNodes    CharacterNode[]
+  effects      Effect[]
+  assignments  CharacterAssignment[]
+  dependencies DependencyEdge[]
+  auditLogs    AuditLog[]
+
+  @@index([name])
+  @@index([ownerId])
+  @@index([workspaceId, archivedAt])
+}
+
+model CharacterAssignment {
+  id          String   @id @default(cuid())
+  characterId String
+  userId      String
+  canView     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, userId])
+  @@index([userId])
+}
+
+model CharacterNode {
+  id          String    @id @default(cuid())
+  characterId String
+  parentId    String?
+  type        NodeType
+  name        String
+  slug        String?
+  path        String
+  order       Int       @default(0)
+  data        Json      @default("{}")
+  computed    Json      @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
+
+  character   Character        @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  parent      CharacterNode?   @relation("CharacterTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    CharacterNode[]  @relation("CharacterTree")
+  effects     Effect[]         @relation("EffectSourceNode")
+  sourceEdges DependencyEdge[] @relation("DependencySource")
+  targetEdges DependencyEdge[] @relation("DependencyTarget")
+
+  @@index([characterId, parentId, order])
+  @@index([characterId, path])
+  @@index([type])
+}
+
+model EntityTemplate {
+  id                 String       @id @default(cuid())
+  workspaceId        String?
+  kind               TemplateKind
+  name               String
+  description        String?
+  isGlobal           Boolean      @default(false)
+  isDefaultCharacter Boolean      @default(false)
+  createdById        String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  archivedAt         DateTime?
+  metadata           Json         @default("{}")
+
+  workspace Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  createdBy User?          @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  nodes     TemplateNode[]
+  effects   Effect[]
+
+  @@index([kind, name])
+  @@index([isDefaultCharacter])
+  @@index([workspaceId, archivedAt])
+}
+
+model TemplateNode {
+  id         String   @id @default(cuid())
+  templateId String
+  parentId   String?
+  type       NodeType
+  name       String
+  slug       String?
+  path       String
+  order      Int      @default(0)
+  data       Json     @default("{}")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  template EntityTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  parent   TemplateNode?  @relation("TemplateTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children TemplateNode[] @relation("TemplateTree")
+  effects  Effect[]       @relation("EffectSourceTemplateNode")
+
+  @@index([templateId, parentId, order])
+  @@index([templateId, path])
+}
+
+model Effect {
+  id                   String          @id @default(cuid())
+  name                 String
+  enabled              Boolean         @default(true)
+  operation            EffectOperation
+  priority             Int             @default(0)
+  sourceNodeId         String?
+  sourceTemplateNodeId String?
+  characterId          String?
+  templateId           String?
+  condition            Json            @default("{\"kind\":\"always\"}")
+  target               Json
+  source               Json
+  payload              Json            @default("{}")
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  sourceNode         CharacterNode?  @relation("EffectSourceNode", fields: [sourceNodeId], references: [id], onDelete: SetNull)
+  sourceTemplateNode TemplateNode?   @relation("EffectSourceTemplateNode", fields: [sourceTemplateNodeId], references: [id], onDelete: SetNull)
+  character          Character?      @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  template           EntityTemplate? @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, enabled])
+  @@index([templateId, enabled])
+  @@index([sourceNodeId])
+  @@index([sourceTemplateNodeId])
+}
+
+model DependencyEdge {
+  id           String   @id @default(cuid())
+  characterId  String
+  sourceNodeId String
+  targetNodeId String
+  effectId     String?
+  reason       String
+  createdAt    DateTime @default(now())
+
+  character Character     @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  source    CharacterNode @relation("DependencySource", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  target    CharacterNode @relation("DependencyTarget", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, sourceNodeId, targetNodeId, reason])
+  @@index([targetNodeId])
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  workspaceId String?
+  actorId     String?
+  characterId String?
+  entityType  String
+  entityId    String
+  action      AuditAction
+  fieldPath   String?
+  oldValue    Json?
+  newValue    Json?
+  metadata    Json        @default("{}")
+  createdAt   DateTime    @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  actor     User?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  character Character? @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+}
