@@ -30,6 +30,18 @@ export const TEMPLATE_TAG_COLOR_NAMES = [
 
 export type TemplateTagColorName = (typeof TEMPLATE_TAG_COLOR_NAMES)[number];
 
+export const TEMPLATE_TAG_COLOR_COLUMNS: ReadonlyArray<readonly TemplateTagColorName[]> = [
+  ["gray-soft", "gray-solid", "gray-deep"],
+  ["red-soft", "red-solid", "red-deep"],
+  ["orange-soft", "orange-solid", "orange-deep"],
+  ["yellow-soft", "yellow-solid", "yellow-deep"],
+  ["green-soft", "green-solid", "green-deep"],
+  ["teal-soft", "teal-solid", "teal-deep"],
+  ["blue-soft", "blue-solid", "blue-deep"],
+  ["violet-soft", "violet-solid", "violet-deep"],
+  ["pink-soft", "pink-solid", "pink-deep"],
+];
+
 export type TemplateTagModel = {
   id: string;
   name: string;

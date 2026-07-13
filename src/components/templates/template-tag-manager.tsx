@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
-import { TEMPLATE_TAG_COLOR_NAMES, templateTagColorClass, type TemplateTagColorName, type TemplateTagModel } from "@/domain/template-tags";
+import { TEMPLATE_TAG_COLOR_COLUMNS, templateTagColorClass, type TemplateTagColorName, type TemplateTagModel } from "@/domain/template-tags";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { localizedApiError } from "@/i18n/api-errors";
@@ -228,17 +228,21 @@ function TagRow({
 function ColorPicker({ value, onChange }: { value: TemplateTagColorName; onChange: (value: TemplateTagColorName) => void }) {
   const { t } = useI18n();
   return (
-    <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-      {TEMPLATE_TAG_COLOR_NAMES.map((color) => (
-        <button
-          key={color}
-          type="button"
-          onClick={() => onChange(color)}
-          className={`min-h-9 rounded-md border px-2 text-xs font-medium outline-offset-2 ${templateTagColorClass(color)} ${value === color ? "outline outline-2 outline-ring" : ""}`}
-          aria-label={t("templateTag.colorOption", { color })}
-        >
-          Aa
-        </button>
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-9">
+      {TEMPLATE_TAG_COLOR_COLUMNS.map((column) => (
+        <div key={column[0]} className="grid gap-2">
+          {column.map((color) => (
+            <button
+              key={color}
+              type="button"
+              onClick={() => onChange(color)}
+              className={`min-h-9 rounded-md border px-2 text-xs font-medium outline-offset-2 ${templateTagColorClass(color)} ${value === color ? "outline outline-2 outline-ring" : ""}`}
+              aria-label={t("templateTag.colorOption", { color })}
+            >
+              Aa
+            </button>
+          ))}
+        </div>
       ))}
     </div>
   );
