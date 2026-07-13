@@ -1,7 +1,7 @@
 import { BriefcaseBusiness, CheckCircle2, Plus, UserMinus, Users } from "lucide-react";
 import Link from "next/link";
 import type { WorkspaceRole } from "@prisma/client";
-import { addWorkspaceMember, createWorkspace, removeWorkspaceMember, selectWorkspace, updateWorkspaceMember } from "@/server/actions/workspaces";
+import { addWorkspaceMember, createWorkspace, deleteWorkspace, removeWorkspaceMember, selectWorkspace, updateWorkspace, updateWorkspaceMember } from "@/server/actions/workspaces";
 import { prisma } from "@/lib/prisma";
 import { getActiveWorkspace, getUserWorkspaces } from "@/server/authz";
 import { requirePageGM } from "@/server/page-auth";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { WorkspaceSettingsCard } from "@/components/workspaces/workspace-settings-card";
 
 type WorkspaceSearchParams = {
   workspaceError?: string;
@@ -99,6 +100,14 @@ export default async function WorkspacesPage({ searchParams }: { searchParams: P
           ))
         )}
       </div>
+
+      {activeWorkspace && canManageActiveWorkspace && (
+        <WorkspaceSettingsCard
+          workspace={{ id: activeWorkspace.id, name: activeWorkspace.name }}
+          updateAction={updateWorkspace}
+          deleteAction={deleteWorkspace}
+        />
+      )}
 
       {activeWorkspace && (
         <Card>
@@ -210,5 +219,6 @@ function workspaceErrorLabel(error: string, t: Awaited<ReturnType<typeof getTran
   if (error === "memberNotFound") return t("workspace.error.memberNotFound");
   if (error === "membershipNotFound") return t("workspace.error.membershipNotFound");
   if (error === "lastOwner") return t("workspace.error.lastOwner");
+  if (error === "workspaceNotFound") return t("workspace.error.workspaceNotFound");
   return t("workspace.error.generic");
 }

@@ -9,8 +9,10 @@ import { ACTIVE_WORKSPACE_COOKIE, requireUser, requireWorkspaceRole } from "@/se
 import {
   addWorkspaceMemberCommandSchema,
   createWorkspaceCommandSchema,
+  deleteWorkspaceCommandSchema,
   removeWorkspaceMemberCommandSchema,
   selectWorkspaceCommandSchema,
+  updateWorkspaceCommandSchema,
   updateWorkspaceMemberCommandSchema,
 } from "@/domain/validation";
 
@@ -69,6 +71,85 @@ export async function createWorkspace(formData: FormData) {
     maxAge: 60 * 60 * 24 * 365,
     sameSite: "lax",
   });
+  revalidatePath("/");
+  revalidatePath("/templates");
+  revalidatePath("/workspaces");
+  redirect("/workspaces");
+}
+
+export async function updateWorkspace(formData: FormData) {
+  const parsed = updateWorkspaceCommandSchema.parse({
+    workspaceId: formData.get("workspaceId"),
+    name: formData.get("name"),
+  });
+  const { user: actor } = await requireWorkspaceRole(parsed.workspaceId, ["OWNER"]);
+  const current = await prisma.workspace.findFirst({
+    where: { id: parsed.workspaceId, archivedAt: null },
+    select: { id: true, name: true },
+  });
+  if (!current) redirectWorkspaceError("workspaceNotFound");
+
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.workspace.update({
+      where: { id: parsed.workspaceId },
+      data: { name: parsed.name },
+      select: { id: true, name: true },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorId: actor.id,
+        workspaceId: updated.id,
+        entityType: "Workspace",
+        entityId: updated.id,
+        action: "UPDATE",
+        fieldPath: "name",
+        oldValue: { name: current.name },
+        newValue: { name: updated.name },
+      },
+    });
+  });
+
+  revalidatePath("/");
+  revalidatePath("/templates");
+  revalidatePath("/workspaces");
+  redirect("/workspaces");
+}
+
+export async function deleteWorkspace(formData: FormData) {
+  const parsed = deleteWorkspaceCommandSchema.parse({
+    workspaceId: formData.get("workspaceId"),
+  });
+  const { user: actor } = await requireWorkspaceRole(parsed.workspaceId, ["OWNER"]);
+  const current = await prisma.workspace.findFirst({
+    where: { id: parsed.workspaceId, archivedAt: null },
+    select: { id: true, name: true, archivedAt: true },
+  });
+  if (!current) redirectWorkspaceError("workspaceNotFound");
+
+  const archivedAt = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.workspace.update({
+      where: { id: parsed.workspaceId },
+      data: { archivedAt },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorId: actor.id,
+        workspaceId: current.id,
+        entityType: "Workspace",
+        entityId: current.id,
+        action: "DELETE",
+        fieldPath: "archivedAt",
+        oldValue: { name: current.name, archivedAt: current.archivedAt },
+        newValue: { archivedAt: archivedAt.toISOString() },
+      },
+    });
+  });
+
+  const cookieStore = await cookies();
+  if (cookieStore.get(ACTIVE_WORKSPACE_COOKIE)?.value === parsed.workspaceId) {
+    cookieStore.delete(ACTIVE_WORKSPACE_COOKIE);
+  }
   revalidatePath("/");
   revalidatePath("/templates");
   revalidatePath("/workspaces");
@@ -212,7 +293,8 @@ export async function removeWorkspaceMember(formData: FormData) {
 type WorkspaceFormError =
   | "memberNotFound"
   | "membershipNotFound"
-  | "lastOwner";
+  | "lastOwner"
+  | "workspaceNotFound";
 
 function redirectWorkspaceError(error: WorkspaceFormError): never {
   redirect(`/workspaces?workspaceError=${error}`);

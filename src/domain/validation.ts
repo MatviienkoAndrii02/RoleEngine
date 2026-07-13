@@ -352,6 +352,15 @@ export const createWorkspaceCommandSchema = z.object({
   name: nameSchema,
 }).strict();
 
+export const updateWorkspaceCommandSchema = z.object({
+  workspaceId: idSchema,
+  name: nameSchema,
+}).strict();
+
+export const deleteWorkspaceCommandSchema = z.object({
+  workspaceId: idSchema,
+}).strict();
+
 export const workspaceRoleSchema = z.enum(["OWNER", "GM", "PLAYER"]);
 
 export const addWorkspaceMemberCommandSchema = z.object({
