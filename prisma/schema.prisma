@@ -32,6 +32,12 @@ enum TemplateKind {
   OTHER
 }
 
+enum TemplateSlotDirection {
+  INPUT
+  OUTPUT
+  BIDIRECTIONAL
+}
+
 enum EffectOperation {
   ADD
   SUBTRACT
@@ -226,10 +232,29 @@ model EntityTemplate {
   createdBy User?          @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
   nodes     TemplateNode[]
   effects   Effect[]
+  slots     TemplateSlot[]
 
   @@index([kind, name])
   @@index([isDefaultCharacter])
   @@index([workspaceId, archivedAt])
+}
+
+model TemplateSlot {
+  id            String                @id @default(cuid())
+  templateId    String
+  key           String
+  label         String
+  description   String?
+  direction     TemplateSlotDirection @default(INPUT)
+  acceptedTypes Json                  @default("[]")
+  required      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  template EntityTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, key])
+  @@index([templateId])
 }
 
 model TemplateNode {

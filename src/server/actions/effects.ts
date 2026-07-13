@@ -66,9 +66,9 @@ export async function createTemplateNumericEffect(input: { templateId: string; n
     prisma.templateNode.findMany({ where: { templateId: input.templateId } }),
     prisma.effect.findMany({ where: { templateId: input.templateId, enabled: true } })
   ]);
-  const target = nodes.find((node) => node.id === input.targetNodeId);
-  if (!target || !["NUMBER", "BAR"].includes(target.type)) throw new Error("Numeric target is required");
-  const candidate = { id: "candidate", name, enabled: true, operation: input.operation, priority: effects.length, condition: input.condition, target: { kind: "node", nodeId: input.targetNodeId }, source: input.source, payload: input.numericField ? { numericField: input.numericField } : {} } as EffectDefinition;
+  const targetRef = await resolveTemplateTargetRef(input.templateId, input.targetNodeId, ["NUMBER", "BAR"]);
+  if (!targetRef) throw new Error("Numeric target is required");
+  const candidate = { id: "candidate", name, enabled: true, operation: input.operation, priority: effects.length, condition: input.condition, target: targetRef, source: input.source, payload: input.numericField ? { numericField: input.numericField } : {} } as EffectDefinition;
   const parsedNodes = parseTemplateNodeModels(nodes).nodes;
   const parsedEffects = parseEffectDefinitions(effects).effects;
   const check = new DependencyEngine(parsedNodes, [...parsedEffects, candidate]).evaluate();
@@ -83,13 +83,14 @@ export async function createTemplateStructuralEffect(input: { templateId: string
   const actor = await requireGM();
   const { template } = await requireTemplateGM(input.templateId);
   const target = input.targetNodeId
-    ? await prisma.templateNode.findFirstOrThrow({ where: { id: input.targetNodeId, templateId: input.templateId } })
+    ? await resolveTemplateStructuralTarget(input.templateId, input.targetNodeId)
     : null;
   if (input.operation === "PATCH_NODE_PROPS" && !target) throw new Error("Patch target is required");
-  if ((input.operation === "CREATE_NODE" || input.operation === "CREATE_GROUP") && target && !["CONTAINER", "GROUP"].includes(target.type)) throw new Error("Structural nodes can only be created at the template root or inside Container or Group");
+  if ((input.operation === "CREATE_NODE" || input.operation === "CREATE_GROUP") && target && target.kind === "node" && !["CONTAINER", "GROUP"].includes(target.type)) throw new Error("Structural nodes can only be created at the template root or inside Container or Group");
+  if ((input.operation === "CREATE_NODE" || input.operation === "CREATE_GROUP") && target && target.kind === "templateSlot" && !target.acceptedTypes.some((type) => type === "CONTAINER" || type === "GROUP")) throw new Error("Structural slot target must accept Container or Group");
   const count = await prisma.effect.count({ where: { templateId: input.templateId } });
   const payload = input.operation === "PATCH_NODE_PROPS" ? { patch: input.patch ?? {}, ...(input.patchFromSource ? { patchFromSource: input.patchFromSource } : {}) } : { createNode: input.createNode };
-  const effectTarget = target ? { kind: "node", nodeId: target.id } : { kind: "root" };
+  const effectTarget = target ? target.target : { kind: "root" };
   const effect = await prisma.effect.create({ data: { name: input.name.trim(), operation: input.operation, priority: count, templateId: input.templateId, condition: input.condition as Prisma.InputJsonValue, target: effectTarget, source: (input.source ?? { kind: "number", value: 0 }) as Prisma.InputJsonValue, payload: payload as Prisma.InputJsonValue } });
   try { await validateTemplateEffectGraph(input.templateId); } catch (error) { await prisma.effect.delete({ where: { id: effect.id } }); throw error; }
   await prisma.auditLog.create({ data: { actorId: actor.id, workspaceId: template.workspaceId, entityType: "Effect", entityId: effect.id, action: "CREATE", newValue: { templateId: input.templateId, name: effect.name, operation: effect.operation } } });
@@ -143,14 +144,21 @@ export async function updateEffect(effectId: string, input: {
       ? await prisma.characterNode.findMany({ where: { characterId: current.characterId, archivedAt: null } })
       : await prisma.templateNode.findMany({ where: { templateId: templateId ?? "" } });
     const target = input.targetNodeId
-      ? nodes.find((node) => node.id === input.targetNodeId)
+      ? current.templateId
+        ? await resolveTemplateStructuralTarget(current.templateId, input.targetNodeId)
+        : nodes.find((node) => node.id === input.targetNodeId) ?? null
       : null;
     if (numericOperations.includes(operation)) {
-      if (!target || !["NUMBER", "BAR"].includes(target.type)) throw new Error("Numeric target is required");
+      const numericTarget = input.targetNodeId && current.templateId
+        ? await resolveTemplateTargetRef(current.templateId, input.targetNodeId, ["NUMBER", "BAR"])
+        : target && "type" in target && ["NUMBER", "BAR"].includes(target.type)
+          ? { kind: "node" as const, nodeId: target.id }
+          : null;
+      if (!numericTarget) throw new Error("Numeric target is required");
       if (!input.source || !input.condition) throw new Error("Numeric source and condition are required");
       replacement = {
         operation,
-        target: { kind: "node", nodeId: target.id },
+        target: numericTarget,
         source: input.source as Prisma.InputJsonValue,
         condition: input.condition as Prisma.InputJsonValue,
         payload: (input.numericField ? { numericField: input.numericField } : {}) as Prisma.InputJsonValue,
@@ -158,12 +166,15 @@ export async function updateEffect(effectId: string, input: {
     } else {
       if (!input.condition) throw new Error("Effect condition is required");
       if (operation === "PATCH_NODE_PROPS" && !target) throw new Error("Patch target is required");
-      if ((operation === "CREATE_NODE" || operation === "CREATE_GROUP") && target && !["CONTAINER", "GROUP"].includes(target.type)) {
+      if ((operation === "CREATE_NODE" || operation === "CREATE_GROUP") && target && "type" in target && !["CONTAINER", "GROUP"].includes(target.type)) {
         throw new Error("Structural nodes can only be created at the character root or inside Container or Group");
+      }
+      if ((operation === "CREATE_NODE" || operation === "CREATE_GROUP") && target && "acceptedTypes" in target && !target.acceptedTypes.some((type) => type === "CONTAINER" || type === "GROUP")) {
+        throw new Error("Structural slot target must accept Container or Group");
       }
       replacement = {
         operation,
-        target: target ? { kind: "node", nodeId: target.id } : { kind: "root" },
+        target: target ? ("target" in target ? target.target : { kind: "node", nodeId: target.id }) : { kind: "root" },
         source: (input.source ?? { kind: "number", value: 0 }) as Prisma.InputJsonValue,
         condition: input.condition as Prisma.InputJsonValue,
         payload: (operation === "PATCH_NODE_PROPS"
@@ -252,4 +263,41 @@ async function requireEffectWritableWorkspace(effect: Effect) {
     return (await requireTemplateGM(effect.templateId, { archived: "any" })).template.workspaceId;
   }
   throw new Error("Effect scope is required");
+}
+
+function parseTemplateTargetInput(value: string) {
+  return value.startsWith("slot:")
+    ? { kind: "slot" as const, id: value.slice("slot:".length) }
+    : { kind: "node" as const, id: value };
+}
+
+async function resolveTemplateTargetRef(templateId: string, value: string, acceptedTypes: string[]): Promise<EffectDefinition["target"] | null> {
+  const parsed = parseTemplateTargetInput(value);
+  if (parsed.kind === "node") {
+    const target = await prisma.templateNode.findFirst({ where: { id: parsed.id, templateId } });
+    if (!target || !acceptedTypes.includes(target.type)) return null;
+    return { kind: "node", nodeId: target.id };
+  }
+
+  const slot = await prisma.templateSlot.findFirst({ where: { id: parsed.id, templateId } });
+  if (!slot) return null;
+  const slotTypes = Array.isArray(slot.acceptedTypes) ? slot.acceptedTypes.filter((type): type is string => typeof type === "string") : [];
+  if (slotTypes.length > 0 && !slotTypes.some((type) => acceptedTypes.includes(type))) return null;
+  return { kind: "templateSlot", slotId: slot.id };
+}
+
+async function resolveTemplateStructuralTarget(templateId: string, value: string): Promise<
+  | { kind: "node"; id: string; type: string; target: EffectDefinition["target"] }
+  | { kind: "templateSlot"; id: string; acceptedTypes: string[]; target: EffectDefinition["target"] }
+  | null
+> {
+  const parsed = parseTemplateTargetInput(value);
+  if (parsed.kind === "node") {
+    const target = await prisma.templateNode.findFirst({ where: { id: parsed.id, templateId } });
+    return target ? { kind: "node", id: target.id, type: target.type, target: { kind: "node", nodeId: target.id } } : null;
+  }
+  const slot = await prisma.templateSlot.findFirst({ where: { id: parsed.id, templateId } });
+  if (!slot) return null;
+  const acceptedTypes = Array.isArray(slot.acceptedTypes) ? slot.acceptedTypes.filter((type): type is string => typeof type === "string") : [];
+  return { kind: "templateSlot", id: slot.id, acceptedTypes, target: { kind: "templateSlot", slotId: slot.id } };
 }

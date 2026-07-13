@@ -15,7 +15,13 @@ const usernameSchema = z.string()
 const accountIdentifierSchema = z.string().trim().toLowerCase().min(3).max(320);
 
 const described = <T extends z.ZodRawShape>(shape: T) =>
-  z.object({ ...shape, description: descriptionSchema, icon: iconSchema }).strict();
+  z.object({
+    ...shape,
+    description: descriptionSchema,
+    icon: iconSchema,
+    collapsedByDefault: z.boolean().optional(),
+    hiddenFromPlayer: z.boolean().optional(),
+  }).strict();
 
 export const numberNodeDataSchema = described({
   value: finiteNumberSchema,
@@ -76,7 +82,7 @@ export const tableNodeDataSchema = described({
   }
 });
 
-export const containerNodeDataSchema = described({ collapsedByDefault: z.boolean().optional() });
+export const containerNodeDataSchema = described({});
 export const groupNodeDataSchema = described({
   color: z.string().trim().max(100).optional(),
 });
@@ -130,6 +136,7 @@ export const formulaExpressionSchema: z.ZodType<FormulaExpression> = z.lazy(() =
   z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("const"), value: finiteNumberSchema }).strict(),
     z.object({ kind: z.literal("ref"), nodeId: idSchema, field: z.enum(["value", "current", "min", "max"]).optional() }).strict(),
+    z.object({ kind: z.literal("slotRef"), slotId: idSchema, field: z.enum(["value", "current", "min", "max"]).optional() }).strict(),
     z.object({
       kind: z.enum(["add", "subtract", "multiply", "divide"]),
       left: formulaExpressionSchema,
@@ -141,6 +148,7 @@ export const formulaExpressionSchema: z.ZodType<FormulaExpression> = z.lazy(() =
 export const effectSourceSchema: z.ZodType<EffectSource> = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("number"), value: finiteNumberSchema }).strict(),
   z.object({ kind: z.literal("node"), nodeId: idSchema, field: z.enum(["value", "current", "min", "max"]).optional() }).strict(),
+  z.object({ kind: z.literal("templateSlot"), slotId: idSchema, field: z.enum(["value", "current", "min", "max"]).optional() }).strict(),
   z.object({ kind: z.literal("formula"), expression: formulaExpressionSchema }).strict(),
 ]);
 
@@ -148,9 +156,16 @@ export const effectConditionSchema: z.ZodType<EffectCondition> = z.lazy(() =>
   z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("always") }).strict(),
     z.object({ kind: z.literal("fieldExists"), nodeId: idSchema }).strict(),
+    z.object({ kind: z.literal("slotExists"), slotId: idSchema }).strict(),
     z.object({
       kind: z.literal("compare"),
       nodeId: idSchema,
+      operator: z.enum(["gt", "lt", "eq"]),
+      value: effectSourceSchema,
+    }).strict(),
+    z.object({
+      kind: z.literal("compareSlot"),
+      slotId: idSchema,
       operator: z.enum(["gt", "lt", "eq"]),
       value: effectSourceSchema,
     }).strict(),
@@ -162,6 +177,7 @@ export const effectConditionSchema: z.ZodType<EffectCondition> = z.lazy(() =>
 
 export const effectTargetSchema: z.ZodType<EffectTarget> = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("node"), nodeId: idSchema }).strict(),
+  z.object({ kind: z.literal("templateSlot"), slotId: idSchema }).strict(),
   z.object({ kind: z.literal("path"), path: z.string().trim().min(1).max(2_000) }).strict(),
   z.object({ kind: z.literal("parent"), parentNodeId: idSchema }).strict(),
   z.object({ kind: z.literal("root") }).strict(),
@@ -288,7 +304,28 @@ export const characterAssignmentCommandSchema = z.object({
 export const applyTemplateCommandSchema = z.object({
   templateId: idSchema,
   parentNodeId: idSchema.nullable().optional(),
+  bindings: z.record(idSchema, idSchema).optional(),
 }).strict();
+
+export const templateSlotDirectionSchema = z.enum(["INPUT", "OUTPUT", "BIDIRECTIONAL"]);
+
+export const createTemplateSlotCommandSchema = z.object({
+  key: z.string().trim().min(1).max(80).regex(/^[A-Za-z][A-Za-z0-9_]*$/, "Slot key must start with a latin letter and contain only latin letters, numbers, and underscores"),
+  label: nameSchema,
+  description: descriptionSchema,
+  direction: templateSlotDirectionSchema,
+  acceptedTypes: z.array(nodeTypeSchema).min(1).max(6),
+  required: z.boolean().optional(),
+}).strict();
+
+export const updateTemplateSlotCommandSchema = z.object({
+  key: z.string().trim().min(1).max(80).regex(/^[A-Za-z][A-Za-z0-9_]*$/).optional(),
+  label: nameSchema.optional(),
+  description: descriptionSchema.nullable().optional(),
+  direction: templateSlotDirectionSchema.optional(),
+  acceptedTypes: z.array(nodeTypeSchema).min(1).max(6).optional(),
+  required: z.boolean().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, { message: "At least one field must be provided" });
 
 export const templateKindSchema = z.enum(["CHARACTER", "ITEM", "SKILL", "PASSIVE_TALENT", "MUTATION", "BODY_PART", "OTHER"]);
 

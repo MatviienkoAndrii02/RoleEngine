@@ -3,17 +3,21 @@
 import { useState } from "react";
 import type { EffectCondition } from "@/domain/effects";
 import type { CharacterNodeModel } from "@/domain/nodes";
+import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Input } from "@/components/ui/input";
 import { useI18n } from "@/i18n/client";
 
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 
-export function EffectConditionBuilder({ nodes, prefix = "condition" }: { nodes: CharacterNodeModel[]; prefix?: string }) {
+export function EffectConditionBuilder({ nodes, slots = [], prefix = "condition" }: { nodes: CharacterNodeModel[]; slots?: TemplateSlotModel[]; prefix?: string }) {
   const { t } = useI18n();
   const [join, setJoin] = useState("single");
   const [firstKind, setFirstKind] = useState("always");
   const [secondKind, setSecondKind] = useState("exists");
-  const options = nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>);
+  const options = [
+    ...nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>),
+    ...slots.map((slot) => <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>),
+  ];
 
   return (
     <div className="space-y-2">
@@ -87,11 +91,26 @@ function readConditionLeaf(data: FormData, prefix: string): EffectCondition {
   const kind = String(data.get(`${prefix}Kind`) ?? "always");
   if (kind === "always") return { kind: "always" };
   const nodeId = String(data.get(`${prefix}NodeId`) ?? "");
-  if (kind === "exists") return { kind: "fieldExists", nodeId };
+  const parsed = parseTemplateSelectValue(nodeId);
+  if (kind === "exists") return parsed.kind === "slot" ? { kind: "slotExists", slotId: parsed.id } : { kind: "fieldExists", nodeId: parsed.id };
+  if (parsed.kind === "slot") {
+    return {
+      kind: "compareSlot",
+      slotId: parsed.id,
+      operator: kind as "gt" | "lt" | "eq",
+      value: { kind: "number", value: Number(data.get(`${prefix}Value`)) },
+    };
+  }
   return {
     kind: "compare",
-    nodeId,
+    nodeId: parsed.id,
     operator: kind as "gt" | "lt" | "eq",
     value: { kind: "number", value: Number(data.get(`${prefix}Value`)) },
   };
+}
+
+function parseTemplateSelectValue(value: string) {
+  return value.startsWith("slot:")
+    ? { kind: "slot" as const, id: value.slice("slot:".length) }
+    : { kind: "node" as const, id: value };
 }

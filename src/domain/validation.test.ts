@@ -6,6 +6,7 @@ import {
   createEffectCommandSchema,
   createNodeCommandSchema,
   createWorkspaceCommandSchema,
+  effectDefinitionSchema,
   parseNodeData,
   removeWorkspaceMemberCommandSchema,
   registerAccountCommandSchema,
@@ -41,6 +42,7 @@ test("rejects node data that does not match its type", () => {
 
 test("validates optional node icons", () => {
   assert.doesNotThrow(() => parseNodeData("NUMBER", { value: 10, icon: "swords" }));
+  assert.doesNotThrow(() => parseNodeData("NUMBER", { value: 10, collapsedByDefault: true, hiddenFromPlayer: true }));
   assert.doesNotThrow(() => parseNodeData("BAR", { current: 1, min: 0, max: 3, icon: "heart" }));
   assert.doesNotThrow(() => parseNodeData("TEXT", { text: "Нотатки", icon: "book" }));
   assert.throws(() => parseNodeData("BAR", { current: 1, max: 3, icon: "custom-uploaded-icon" }));
@@ -120,6 +122,26 @@ test("validates recursive conditions and formulas", () => {
   });
 
   assert.equal(result.operation, "PERCENT_BONUS");
+});
+
+test("accepts template slot references in effects", () => {
+  assert.doesNotThrow(() => effectDefinitionSchema.parse({
+    id: "effect_slot",
+    name: "Slot effect",
+    enabled: true,
+    operation: "ADD",
+    priority: 0,
+    target: { kind: "templateSlot", slotId: "slot_strength" },
+    source: {
+      kind: "formula",
+      expression: {
+        kind: "multiply",
+        left: { kind: "slotRef", slotId: "slot_intelligence", field: "value" },
+        right: { kind: "const", value: 10 },
+      },
+    },
+    condition: { kind: "compareSlot", slotId: "slot_intelligence", operator: "gt", value: { kind: "number", value: 0 } },
+  }));
 });
 
 test("rejects invalid structural node payload", () => {

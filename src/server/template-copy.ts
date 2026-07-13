@@ -1,25 +1,34 @@
-import type { Prisma, TemplateNode } from "@prisma/client";
+import type { NodeType, Prisma, TemplateNode, TemplateSlot } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 type NodeIdMap = Map<string, string>;
+type SlotBindingMap = Map<string, string>;
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 export async function copyTemplateIntoCharacter(input: {
   templateId: string;
   characterId: string;
   parentNodeId?: string | null;
+  bindings?: Record<string, string>;
 }, db: DbClient = prisma) {
   const template = await db.entityTemplate.findUnique({
     where: { id: input.templateId },
     include: {
       nodes: { orderBy: [{ parentId: "asc" }, { order: "asc" }] },
-      effects: true
+      effects: true,
+      slots: true
     }
   });
 
   if (!template) throw new Error("Template not found");
 
   const idMap: NodeIdMap = new Map();
+  const slotBindings = await validateTemplateSlotBindings({
+    characterId: input.characterId,
+    slots: template.slots,
+    bindings: input.bindings ?? {},
+    db,
+  });
   const nodesByParent = groupByParent(template.nodes);
 
   const copyChildren = async (parentTemplateId: string | null, parentCharacterId: string | null, parentPath: string) => {
@@ -57,10 +66,10 @@ export async function copyTemplateIntoCharacter(input: {
         priority: effect.priority,
         characterId: input.characterId,
         sourceNodeId: effect.sourceTemplateNodeId ? idMap.get(effect.sourceTemplateNodeId) : null,
-        condition: remapTemplateEffectJson(effect.condition, idMap),
-        target: remapTemplateEffectJson(effect.target, idMap),
-        source: remapTemplateEffectJson(effect.source, idMap),
-        payload: remapTemplateEffectJson(effect.payload, idMap)
+        condition: remapTemplateEffectJson(effect.condition, idMap, slotBindings),
+        target: remapTemplateEffectJson(effect.target, idMap, slotBindings),
+        source: remapTemplateEffectJson(effect.source, idMap, slotBindings),
+        payload: remapTemplateEffectJson(effect.payload, idMap, slotBindings)
       }
     });
   }
@@ -78,15 +87,85 @@ function groupByParent(nodes: TemplateNode[]) {
   return map;
 }
 
-export function remapTemplateEffectJson(value: unknown, idMap: ReadonlyMap<string, string>): Prisma.InputJsonValue {
-  if (Array.isArray(value)) return value.map((item) => remapTemplateEffectJson(item, idMap));
+async function validateTemplateSlotBindings(input: {
+  characterId: string;
+  slots: TemplateSlot[];
+  bindings: Record<string, string>;
+  db: DbClient;
+}): Promise<SlotBindingMap> {
+  const result = new Map<string, string>();
+  const slotIds = new Set(input.slots.map((slot) => slot.id));
+  const requestedNodeIds = [...new Set(Object.values(input.bindings).filter(Boolean))];
+  const nodes = requestedNodeIds.length
+    ? await input.db.characterNode.findMany({
+        where: { characterId: input.characterId, id: { in: requestedNodeIds }, archivedAt: null },
+        select: { id: true, type: true },
+      })
+    : [];
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+
+  for (const [slotId, nodeId] of Object.entries(input.bindings)) {
+    if (!slotIds.has(slotId)) throw new Error("Unknown template slot binding");
+    const node = nodesById.get(nodeId);
+    if (!node) throw new Error("Template slot binding target was not found");
+    const slot = input.slots.find((candidate) => candidate.id === slotId);
+    if (!slot) continue;
+    const acceptedTypes = readAcceptedTypes(slot.acceptedTypes);
+    if (acceptedTypes.length > 0 && !acceptedTypes.includes(node.type)) {
+      throw new Error("Template slot binding target has an incompatible node type");
+    }
+    result.set(slotId, nodeId);
+  }
+
+  for (const slot of input.slots) {
+    if (slot.required && !result.has(slot.id)) throw new Error("Required template slot binding is missing");
+  }
+
+  return result;
+}
+
+function readAcceptedTypes(value: Prisma.JsonValue): NodeType[] {
+  const allowed: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is NodeType => typeof item === "string" && allowed.includes(item as NodeType));
+}
+
+export function remapTemplateEffectJson(value: unknown, idMap: ReadonlyMap<string, string>, slotBindings: ReadonlyMap<string, string> = new Map()): Prisma.InputJsonValue {
+  if (Array.isArray(value)) return value.map((item) => remapTemplateEffectJson(item, idMap, slotBindings));
   if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (record.kind === "templateSlot" && typeof record.slotId === "string") {
+      const nodeId = slotBindings.get(record.slotId);
+      return {
+        ...Object.fromEntries(Object.entries(record).filter(([key]) => key !== "slotId")),
+        kind: "node",
+        nodeId: nodeId ?? record.slotId,
+      };
+    }
+    if (record.kind === "slotRef" && typeof record.slotId === "string") {
+      const nodeId = slotBindings.get(record.slotId);
+      return {
+        ...Object.fromEntries(Object.entries(record).filter(([key]) => key !== "slotId")),
+        kind: "ref",
+        nodeId: nodeId ?? record.slotId,
+      };
+    }
+    if (record.kind === "slotExists" && typeof record.slotId === "string") {
+      return { kind: "fieldExists", nodeId: slotBindings.get(record.slotId) ?? record.slotId };
+    }
+    if (record.kind === "compareSlot" && typeof record.slotId === "string") {
+      return {
+        ...Object.fromEntries(Object.entries(record).filter(([key]) => key !== "slotId")),
+        kind: "compare",
+        nodeId: slotBindings.get(record.slotId) ?? record.slotId,
+      };
+    }
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => {
         if ((key === "nodeId" || key === "parentNodeId") && typeof item === "string") {
           return [key, idMap.get(item) ?? item];
         }
-        return [key, remapTemplateEffectJson(item, idMap)];
+        return [key, remapTemplateEffectJson(item, idMap, slotBindings)];
       })
     );
   }

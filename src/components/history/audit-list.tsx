@@ -73,7 +73,7 @@ export function AuditList({
       return;
     }
     if (log.entityType === "EntityTemplate") {
-      openSidebarSection("apply-template", true);
+      openSidebarSection("node-editor", true);
     }
   }
 

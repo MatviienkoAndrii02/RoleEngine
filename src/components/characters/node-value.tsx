@@ -24,13 +24,13 @@ export function NodeValue({
   const { t } = useI18n();
 
   if (node.type === "NUMBER" && "value" in node.data) {
-    return <span className="tabular-nums">{node.data.value}</span>;
+    return <span className="tabular-nums">{formatNodeNumber(node.data.value)}</span>;
   }
 
   if (node.type === "BAR" && "current" in node.data) {
     return (
       <span className="tabular-nums">
-        {node.data.current}/{node.data.max}
+        {formatNodeNumber(node.data.current)}/{formatNodeNumber(node.data.max)}
       </span>
     );
   }
@@ -94,4 +94,9 @@ function compactText(value: string) {
 
 function hasLineBreak(value: string) {
   return value.includes("\n") || value.includes("\r");
+}
+
+function formatNodeNumber(value: number) {
+  if (!Number.isFinite(value)) return String(value);
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }

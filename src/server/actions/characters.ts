@@ -10,6 +10,8 @@ import { reconcileStructuralEffects } from "@/server/structural-effects";
 import { parseNodeData } from "@/domain/validation";
 import { collectSubtreeIds } from "@/domain/tree";
 import { appError } from "@/server/errors";
+import { DependencyEngine } from "@/engine/dependency-engine";
+import { parseCharacterNodeModels, parseEffectDefinitions } from "@/server/read-models";
 
 export async function createCharacter(input: {
   name: string;
@@ -440,6 +442,7 @@ export async function applyTemplateToCharacter(input: {
   characterId: string;
   templateId: string;
   parentNodeId?: string | null;
+  bindings?: Record<string, string>;
 }) {
   const actor = await requireGM();
   const { character } = await requireCharacterGM(input.characterId);
@@ -450,7 +453,16 @@ export async function applyTemplateToCharacter(input: {
       OR: [{ workspaceId: character.workspaceId }, { workspaceId: null, isGlobal: true }],
     },
   });
-  const result = await copyTemplateIntoCharacter(input);
+  const result = await prisma.$transaction(async (tx) => {
+    const copied = await copyTemplateIntoCharacter(input, tx);
+    const [nodes, effects] = await Promise.all([
+      tx.characterNode.findMany({ where: { characterId: input.characterId, archivedAt: null } }),
+      tx.effect.findMany({ where: { characterId: input.characterId, enabled: true } }),
+    ]);
+    const check = new DependencyEngine(parseCharacterNodeModels(nodes).nodes, parseEffectDefinitions(effects).effects).evaluate();
+    if (check.cycles.length) throw appError("DEPENDENCY_CYCLE", "Template bindings create a dependency cycle");
+    return copied;
+  });
   await reconcileStructuralEffects(input.characterId);
 
   await writeAudit({
@@ -460,7 +472,7 @@ export async function applyTemplateToCharacter(input: {
     entityType: "EntityTemplate",
     entityId: input.templateId,
     action: "APPLY_TEMPLATE",
-    newValue: { copiedNodeIds: result.copiedNodeIds, parentNodeId: input.parentNodeId }
+    newValue: { copiedNodeIds: result.copiedNodeIds, parentNodeId: input.parentNodeId, bindings: input.bindings ?? {} }
   });
 
   revalidatePath(`/characters/${input.characterId}`);

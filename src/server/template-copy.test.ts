@@ -47,3 +47,42 @@ test("remaps template effect node references in nested JSON", () => {
     payload: { parentNodeId: "char_bag" },
   });
 });
+
+test("remaps template slot references to bound character nodes", () => {
+  const result = remapTemplateEffectJson({
+    target: { kind: "templateSlot", slotId: "slot_strength" },
+    source: { kind: "templateSlot", slotId: "slot_intelligence", field: "value" },
+    formula: {
+      kind: "multiply",
+      left: { kind: "slotRef", slotId: "slot_intelligence", field: "value" },
+      right: { kind: "const", value: 10 },
+    },
+    condition: {
+      kind: "and",
+      conditions: [
+        { kind: "slotExists", slotId: "slot_strength" },
+        { kind: "compareSlot", slotId: "slot_intelligence", operator: "gt", value: { kind: "number", value: 0 } },
+      ],
+    },
+  }, new Map(), new Map([
+    ["slot_strength", "char_strength"],
+    ["slot_intelligence", "char_intelligence"],
+  ]));
+
+  assert.deepEqual(result, {
+    target: { kind: "node", nodeId: "char_strength" },
+    source: { kind: "node", nodeId: "char_intelligence", field: "value" },
+    formula: {
+      kind: "multiply",
+      left: { kind: "ref", nodeId: "char_intelligence", field: "value" },
+      right: { kind: "const", value: 10 },
+    },
+    condition: {
+      kind: "and",
+      conditions: [
+        { kind: "fieldExists", nodeId: "char_strength" },
+        { kind: "compare", nodeId: "char_intelligence", operator: "gt", value: { kind: "number", value: 0 } },
+      ],
+    },
+  });
+});

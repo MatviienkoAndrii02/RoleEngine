@@ -2,11 +2,12 @@ import { create } from "zustand";
 
 type CharacterUiState = {
   collapsedNodeIds: Set<string>;
+  expandedNodeIds: Set<string>;
   selectedNodeId: string | null;
   editorMode: "add" | "edit";
   openSidebarSectionIds: Set<string>;
   sidebarScrollRequest: { sectionId: string; nonce: number } | null;
-  toggleNode: (nodeId: string) => void;
+  toggleNode: (nodeId: string, collapsedByDefault?: boolean) => void;
   selectNode: (nodeId: string | null) => void;
   setEditorMode: (mode: "add" | "edit") => void;
   toggleSidebarSection: (sectionId: string) => void;
@@ -15,12 +16,19 @@ type CharacterUiState = {
 
 export const useCharacterUiStore = create<CharacterUiState>((set) => ({
   collapsedNodeIds: new Set(),
+  expandedNodeIds: new Set(),
   selectedNodeId: null,
   editorMode: "add",
   openSidebarSectionIds: new Set(),
   sidebarScrollRequest: null,
-  toggleNode: (nodeId) =>
+  toggleNode: (nodeId, collapsedByDefault = false) =>
     set((state) => {
+      if (collapsedByDefault) {
+        const nextExpanded = new Set(state.expandedNodeIds);
+        if (nextExpanded.has(nodeId)) nextExpanded.delete(nodeId);
+        else nextExpanded.add(nodeId);
+        return { expandedNodeIds: nextExpanded };
+      }
       const next = new Set(state.collapsedNodeIds);
       if (next.has(nodeId)) next.delete(nodeId);
       else next.add(nodeId);

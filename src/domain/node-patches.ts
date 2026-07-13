@@ -36,6 +36,8 @@ export function getNumericPatchFields(type: NodeType): PatchFieldDefinition[] {
 
 export function getStructuralPatchFields(type: NodeType): PatchFieldDefinition[] {
   const common: PatchFieldDefinition[] = [
+    { field: "collapsedByDefault", labelKey: "node.collapsedDefault", kind: "boolean", derived: false },
+    { field: "hiddenFromPlayer", labelKey: "node.hiddenFromPlayer", kind: "boolean", derived: false },
     { field: "description", labelKey: "common.description", kind: "text", derived: false },
     { field: "icon", labelKey: "icons.label", kind: "text", derived: false },
   ];
@@ -43,13 +45,6 @@ export function getStructuralPatchFields(type: NodeType): PatchFieldDefinition[]
   if (type === "TEXT") {
     return [
       { field: "text", labelKey: "node.text", kind: "text", derived: false },
-      ...common,
-    ];
-  }
-
-  if (type === "CONTAINER") {
-    return [
-      { field: "collapsedByDefault", labelKey: "node.collapsedDefault", kind: "boolean", derived: false },
       ...common,
     ];
   }

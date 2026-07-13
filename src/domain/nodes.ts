@@ -53,12 +53,17 @@ export type TableNodeData = {
   rows: Array<Record<string, unknown>>;
 };
 
-export type ContainerNodeData = {
-  collapsedByDefault?: boolean;
-};
+export type ContainerNodeData = object;
 
 export type GroupNodeData = {
   color?: string;
+};
+
+type CommonNodePresentation = {
+  description?: string;
+  icon?: NodeIconName;
+  collapsedByDefault?: boolean;
+  hiddenFromPlayer?: boolean;
 };
 
 export type NodeData = (
@@ -68,7 +73,7 @@ export type NodeData = (
   | TableNodeData
   | ContainerNodeData
   | GroupNodeData
-) & { description?: string; icon?: NodeIconName };
+) & CommonNodePresentation;
 
 export type CharacterNodeModel = {
   id: string;

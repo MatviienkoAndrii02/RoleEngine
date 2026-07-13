@@ -3,13 +3,16 @@ import type { NodeType } from "@/domain/nodes";
 export type EffectCondition =
   | { kind: "always" }
   | { kind: "fieldExists"; nodeId: string }
+  | { kind: "slotExists"; slotId: string }
   | { kind: "compare"; nodeId: string; operator: "gt" | "lt" | "eq"; value: EffectSource }
+  | { kind: "compareSlot"; slotId: string; operator: "gt" | "lt" | "eq"; value: EffectSource }
   | { kind: "and"; conditions: EffectCondition[] }
   | { kind: "or"; conditions: EffectCondition[] }
   | { kind: "not"; condition: EffectCondition };
 
 export type EffectTarget =
   | { kind: "node"; nodeId: string }
+  | { kind: "templateSlot"; slotId: string }
   | { kind: "path"; path: string }
   | { kind: "parent"; parentNodeId: string }
   | { kind: "root" };
@@ -17,11 +20,13 @@ export type EffectTarget =
 export type EffectSource =
   | { kind: "number"; value: number }
   | { kind: "node"; nodeId: string; field?: "value" | "current" | "min" | "max" }
+  | { kind: "templateSlot"; slotId: string; field?: "value" | "current" | "min" | "max" }
   | { kind: "formula"; expression: FormulaExpression };
 
 export type FormulaExpression =
   | { kind: "const"; value: number }
   | { kind: "ref"; nodeId: string; field?: "value" | "current" | "min" | "max" }
+  | { kind: "slotRef"; slotId: string; field?: "value" | "current" | "min" | "max" }
   | { kind: "add" | "subtract" | "multiply" | "divide"; left: FormulaExpression; right: FormulaExpression };
 
 export type CreateNodePayload = {
@@ -116,6 +121,7 @@ function collectConditionReferences(condition: EffectCondition, result: Set<stri
     result.add(condition.nodeId);
     collectSourceReferences(condition.value, result);
   }
+  if (condition.kind === "compareSlot") collectSourceReferences(condition.value, result);
   if (condition.kind === "and" || condition.kind === "or") condition.conditions.forEach((child) => collectConditionReferences(child, result));
   if (condition.kind === "not") collectConditionReferences(condition.condition, result);
 }

@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import type { EffectSource } from "@/domain/effects";
 import type { CharacterNodeModel, NodeType } from "@/domain/nodes";
 import { getStructuralPatchFields, type PatchFieldDefinition } from "@/domain/node-patches";
+import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
@@ -14,13 +15,13 @@ import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 
 type StructuralEffectBuilderProps =
-  | { characterId: string; templateId?: never; nodes: CharacterNodeModel[] }
-  | { templateId: string; characterId?: never; nodes: CharacterNodeModel[] };
+  | { characterId: string; templateId?: never; nodes: CharacterNodeModel[]; slots?: never }
+  | { templateId: string; characterId?: never; nodes: CharacterNodeModel[]; slots?: TemplateSlotModel[] };
 
 const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 
-export function StructuralEffectBuilder({ characterId, templateId, nodes }: StructuralEffectBuilderProps) {
+export function StructuralEffectBuilder({ characterId, templateId, nodes, slots = [] }: StructuralEffectBuilderProps) {
   const { t } = useI18n();
   const router = useRouter();
   const [operation, setOperation] = useState<"CREATE_NODE" | "CREATE_GROUP" | "PATCH_NODE_PROPS">("CREATE_NODE");
@@ -35,9 +36,14 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes }: Stru
   const endpoint = characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`;
   const rootLabel = characterId ? t("common.rootCharacter") : t("common.rootTemplate");
   const containers = nodes.filter((node) => node.type === "CONTAINER" || node.type === "GROUP");
-  const patchTarget = nodes.find((node) => node.id === targetNodeId) ?? null;
+  const containerSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "CONTAINER" || type === "GROUP"));
+  const patchSlots = slots;
+  const selectedTarget = parseTemplateSelectValue(targetNodeId);
+  const patchTarget = selectedTarget.kind === "node" ? nodes.find((node) => node.id === selectedTarget.id) ?? null : null;
+  const patchSlot = selectedTarget.kind === "slot" ? patchSlots.find((slot) => slot.id === selectedTarget.id) ?? null : null;
   const patchFields = useMemo(() => patchTarget ? getStructuralPatchFields(patchTarget.type) : [], [patchTarget]);
-  const selectedPatchField = patchFields.find((field) => field.field === patchField) ?? patchFields[0] ?? null;
+  const patchFieldsForSelection = patchSlot ? commonStructuralFields : patchFields;
+  const selectedPatchField = patchFieldsForSelection.find((field) => field.field === patchField) ?? patchFieldsForSelection[0] ?? null;
 
   useEffect(() => {
     if (!selectedPatchField) {
@@ -71,7 +77,13 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes }: Stru
           createNode: {
             type: createType,
             name: String(data.get("createdNodeName")),
-            data: defaultData(createType, String(data.get("description") || ""), String(data.get("icon") || "")),
+            data: defaultData(
+              createType,
+              String(data.get("description") || ""),
+              String(data.get("icon") || ""),
+              data.get("collapsedByDefault") === "on",
+              data.get("hiddenFromPlayer") === "on",
+            ),
           },
         };
 
@@ -107,6 +119,9 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes }: Stru
         {(operation === "PATCH_NODE_PROPS" ? nodes : containers).map((node) => (
           <option key={node.id} value={node.id}>{node.name}</option>
         ))}
+        {(operation === "PATCH_NODE_PROPS" ? patchSlots : containerSlots).map((slot) => (
+          <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>
+        ))}
       </select>
 
       {operation !== "PATCH_NODE_PROPS" ? (
@@ -118,6 +133,14 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes }: Stru
             </select>
           )}
           <Input name="description" placeholder={t("common.description")} />
+          <label className="flex items-center gap-2 text-sm">
+            <input name="collapsedByDefault" type="checkbox" />
+            {t("node.collapsedDefault")}
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input name="hiddenFromPlayer" type="checkbox" />
+            {t("node.hiddenFromPlayer")}
+          </label>
           <NodeIconPicker type={operation === "CREATE_GROUP" ? "GROUP" : nodeType} />
         </>
       ) : (
@@ -131,11 +154,12 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes }: Stru
           sourceKind={sourceKind}
           onSourceKindChange={setSourceKind}
           numericNodes={nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR")}
+          numericSlots={slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"))}
           targetType={patchTarget?.type}
         />
       )}
 
-      <EffectConditionBuilder nodes={nodes} />
+      <EffectConditionBuilder nodes={nodes} slots={slots} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button disabled={pending}>
         <Plus className="h-4 w-4" />
@@ -155,6 +179,7 @@ function PatchControls({
   sourceKind,
   onSourceKindChange,
   numericNodes,
+  numericSlots,
   targetType,
 }: {
   fields: PatchFieldDefinition[];
@@ -166,6 +191,7 @@ function PatchControls({
   sourceKind: string;
   onSourceKindChange: (kind: string) => void;
   numericNodes: CharacterNodeModel[];
+  numericSlots: TemplateSlotModel[];
   targetType?: NodeType;
 }) {
   const { t } = useI18n();
@@ -183,7 +209,7 @@ function PatchControls({
         </select>
       )}
       {mode === "source" && selectedField.derived
-        ? <SourceFields nodes={numericNodes} kind={sourceKind} setKind={onSourceKindChange} />
+        ? <SourceFields nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={onSourceKindChange} />
         : <StaticPatchField field={selectedField} targetType={targetType} />}
     </div>
   );
@@ -206,9 +232,12 @@ function StaticPatchField({ field, targetType }: { field: PatchFieldDefinition; 
   return <Input name="patchNumberValue" type="number" step="any" required placeholder={t(field.labelKey)} />;
 }
 
-function SourceFields({ nodes, kind, setKind }: { nodes: CharacterNodeModel[]; kind: string; setKind: (kind: string) => void }) {
+function SourceFields({ nodes, slots, kind, setKind }: { nodes: CharacterNodeModel[]; slots: TemplateSlotModel[]; kind: string; setKind: (kind: string) => void }) {
   const { t } = useI18n();
-  const options = nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>);
+  const options = [
+    ...nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>),
+    ...slots.map((slot) => <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>),
+  ];
   return (
     <div className="space-y-2">
       <select value={kind} onChange={(event) => setKind(event.target.value)} className={selectClass}>
@@ -231,13 +260,14 @@ function SourceFields({ nodes, kind, setKind }: { nodes: CharacterNodeModel[]; k
   );
 }
 
-function defaultData(type: NodeType, description: string, icon: string) {
-  if (type === "NUMBER") return { value: 0, description, icon };
-  if (type === "BAR") return { current: 0, min: null, max: 10, description, icon };
-  if (type === "TEXT") return { text: "", description, icon };
-  if (type === "TABLE") return { columns: [], rows: [], description, icon };
-  if (type === "CONTAINER") return { collapsedByDefault: false, description, icon };
-  return { color: "teal", description, icon };
+function defaultData(type: NodeType, description: string, icon: string, collapsedByDefault = false, hiddenFromPlayer = false) {
+  const common = { description, icon, collapsedByDefault, hiddenFromPlayer };
+  if (type === "NUMBER") return { ...common, value: 0 };
+  if (type === "BAR") return { ...common, current: 0, min: null, max: 10 };
+  if (type === "TEXT") return { ...common, text: "" };
+  if (type === "TABLE") return { ...common, columns: [], rows: [] };
+  if (type === "CONTAINER") return common;
+  return { ...common, color: "teal" };
 }
 
 function readStaticPatch(field: PatchFieldDefinition, data: FormData) {
@@ -249,13 +279,39 @@ function readStaticPatch(field: PatchFieldDefinition, data: FormData) {
 
 function readSource(kind: string, data: FormData): EffectSource {
   if (kind === "number") return { kind: "number", value: Number(data.get("sourceValue")) };
-  if (kind === "node") return { kind: "node", nodeId: String(data.get("sourceNodeId")), field: "value" };
+  if (kind === "node") return readNodeOrSlotSource(String(data.get("sourceNodeId")));
   return {
     kind: "formula",
-    expression: {
-      kind: String(data.get("formulaOperator")) as "add" | "subtract" | "multiply" | "divide",
-      left: { kind: "ref", nodeId: String(data.get("formulaNodeId")), field: "value" },
-      right: { kind: "const", value: Number(data.get("formulaValue")) },
-    },
+    expression: readNodeOrSlotFormulaRef(String(data.get("formulaNodeId")), String(data.get("formulaOperator")), Number(data.get("formulaValue"))),
+  };
+}
+
+const commonStructuralFields: PatchFieldDefinition[] = [
+  { field: "collapsedByDefault", labelKey: "node.collapsedDefault", kind: "boolean", derived: false },
+  { field: "hiddenFromPlayer", labelKey: "node.hiddenFromPlayer", kind: "boolean", derived: false },
+  { field: "description", labelKey: "common.description", kind: "text", derived: false },
+  { field: "icon", labelKey: "icons.label", kind: "text", derived: false },
+];
+
+function parseTemplateSelectValue(value: string) {
+  return value.startsWith("slot:")
+    ? { kind: "slot" as const, id: value.slice("slot:".length) }
+    : { kind: "node" as const, id: value };
+}
+
+function readNodeOrSlotSource(value: string): EffectSource {
+  const parsed = parseTemplateSelectValue(value);
+  if (parsed.kind === "slot") return { kind: "templateSlot", slotId: parsed.id, field: "value" };
+  return { kind: "node", nodeId: parsed.id, field: "value" };
+}
+
+function readNodeOrSlotFormulaRef(value: string, operator: string, amount: number) {
+  const parsed = parseTemplateSelectValue(value);
+  return {
+    kind: operator as "add" | "subtract" | "multiply" | "divide",
+    left: parsed.kind === "slot"
+      ? { kind: "slotRef" as const, slotId: parsed.id, field: "value" as const }
+      : { kind: "ref" as const, nodeId: parsed.id, field: "value" as const },
+    right: { kind: "const" as const, value: amount },
   };
 }

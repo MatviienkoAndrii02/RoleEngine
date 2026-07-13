@@ -9,11 +9,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TableEditor } from "@/components/characters/table-editor";
 import { NodeIconPicker } from "@/components/characters/node-icons";
+import { ApplyTemplate } from "@/components/characters/apply-template";
+import type { TemplateSlotModel } from "@/domain/template-slots";
 import { useI18n } from "@/i18n/client";
 
 const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
 
-export function NodeEditor({ characterId, templateId, nodes }: { characterId?: string; templateId?: string; nodes: CharacterNodeModel[] }) {
+export function NodeEditor({
+  characterId,
+  templateId,
+  nodes,
+  templates = [],
+}: {
+  characterId?: string;
+  templateId?: string;
+  nodes: CharacterNodeModel[];
+  templates?: Array<{ id: string; name: string; kind: string; slots?: TemplateSlotModel[] }>;
+}) {
   const router = useRouter();
   const { t } = useI18n();
   const selectedNodeId = useCharacterUiStore((state) => state.selectedNodeId);
@@ -76,6 +88,8 @@ export function NodeEditor({ characterId, templateId, nodes }: { characterId?: s
   }
 
   const active = mode === "edit" ? selected : null;
+  const selectedParentId = mode === "add" ? selected?.id ?? null : null;
+  const templateParentId = mode === "add" ? selected?.id ?? null : null;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -83,10 +97,10 @@ export function NodeEditor({ characterId, templateId, nodes }: { characterId?: s
         <Button size="sm" variant="outline" onClick={cancel}><Plus className="h-4 w-4" />{t("node.new")}</Button>
       </div>
       <NodeForm
-        key={`${mode}-${active?.id ?? "new"}-${formRevision}`}
+        key={`${mode}-${active?.id ?? "new"}-${selectedParentId ?? "root"}-${formRevision}`}
         nodes={nodes}
         active={active}
-        selectedParentId={mode === "add" ? selected?.id : null}
+        selectedParentId={selectedParentId}
         rootLabel={templateId ? t("common.rootTemplate") : t("common.rootCharacter")}
         pending={pending}
         error={error}
@@ -94,6 +108,12 @@ export function NodeEditor({ characterId, templateId, nodes }: { characterId?: s
         cancel={cancel}
         remove={active ? remove : undefined}
       />
+      {characterId && templates.length > 0 && (
+        <div className="space-y-3 border-t pt-4">
+          <h4 className="text-sm font-medium">{t("template.addFromTemplate")}</h4>
+          <ApplyTemplate characterId={characterId} templates={templates} nodes={nodes} defaultParentId={templateParentId} />
+        </div>
+      )}
     </div>
   );
 }
@@ -139,6 +159,16 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
         <label className="text-sm font-medium" htmlFor="description">{t("common.description")}</label>
         <textarea id="description" name="description" defaultValue={active?.data.description ?? ""} placeholder={t("node.shortDescription")} className="min-h-20 w-full resize-y rounded-md border border-input bg-background p-3 text-sm" />
       </div>
+      <div className="space-y-2 rounded-md border p-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input name="collapsedByDefault" type="checkbox" defaultChecked={Boolean(active?.data.collapsedByDefault)} />
+          {t("node.collapsedDefault")}
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input name="hiddenFromPlayer" type="checkbox" defaultChecked={Boolean(active?.data.hiddenFromPlayer)} />
+          {t("node.hiddenFromPlayer")}
+        </label>
+      </div>
       <NodeIconPicker key={`icon-${type}-${active?.id ?? "new"}`} type={type} defaultValue={active?.data.icon} />
       <DataFields key={`data-${type}-${active?.id ?? "new"}`} type={type} data={active?.type === type ? active.data : undefined} />
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -158,7 +188,7 @@ function DataFields({ type, data }: { type: NodeType; data?: NodeData }) {
   if (type === "BAR") return <div className="grid grid-cols-3 gap-3"><NumberField name="current" label={t("node.current")} value={value?.current ?? 0} /><NumberField name="min" label={t("node.minimum")} value={value?.min ?? ""} /><NumberField name="max" label={t("node.maximum")} value={value?.max ?? 10} /></div>;
   if (type === "TEXT") return <div className="space-y-2"><label className="text-sm font-medium" htmlFor="text">{t("node.text")}</label><textarea id="text" name="text" defaultValue={String(value?.text ?? "")} className="min-h-32 w-full resize-y rounded-md border border-input bg-background p-3 text-sm" /></div>;
   if (type === "TABLE") return <TableEditor data={value} />;
-  if (type === "CONTAINER") return <label className="flex items-center gap-2 text-sm"><input name="collapsedByDefault" type="checkbox" defaultChecked={Boolean(value?.collapsedByDefault)} />{t("node.collapsedDefault")}</label>;
+  if (type === "CONTAINER") return null;
   return <FormField label={t("node.groupColor")} name="color" defaultValue={String(value?.color ?? "teal")} />;
 }
 
@@ -177,15 +207,21 @@ function readNodeData(type: NodeType, form: FormData): NodeData {
   };
   const description = String(form.get("description") ?? "").trim() || undefined;
   const icon = readIcon(form.get("icon"));
-  if (type === "NUMBER") return { description, icon, value: number("value") ?? 0, min: number("min", null), max: number("max", null), allowNegative: form.get("allowNegative") === "on" };
-  if (type === "BAR") return { description, icon, current: number("current") ?? 0, min: number("min", null), max: number("max") ?? 0 };
-  if (type === "TEXT") return { description, icon, text: String(form.get("text") ?? "") };
+  const common = {
+    description,
+    icon,
+    collapsedByDefault: form.get("collapsedByDefault") === "on",
+    hiddenFromPlayer: form.get("hiddenFromPlayer") === "on",
+  };
+  if (type === "NUMBER") return { ...common, value: number("value") ?? 0, min: number("min", null), max: number("max", null), allowNegative: form.get("allowNegative") === "on" };
+  if (type === "BAR") return { ...common, current: number("current") ?? 0, min: number("min", null), max: number("max") ?? 0 };
+  if (type === "TEXT") return { ...common, text: String(form.get("text") ?? "") };
   if (type === "TABLE") {
     const parsed = readTableData(String(form.get("tableData") ?? ""));
-    return { description, icon, columns: parsed.columns, rows: parsed.rows };
+    return { ...common, columns: parsed.columns, rows: parsed.rows };
   }
-  if (type === "CONTAINER") return { description, icon, collapsedByDefault: form.get("collapsedByDefault") === "on" };
-  return { description, icon, color: String(form.get("color") ?? "teal") };
+  if (type === "CONTAINER") return common;
+  return { ...common, color: String(form.get("color") ?? "teal") };
 }
 
 function readIcon(value: FormDataEntryValue | null): NodeIconName | undefined {

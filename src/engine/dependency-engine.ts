@@ -263,6 +263,7 @@ export class DependencyEngine {
 function evaluateCondition(condition: EffectCondition, ctx: EngineContext): boolean {
   if (condition.kind === "always") return true;
   if (condition.kind === "fieldExists") return ctx.nodes.has(condition.nodeId);
+  if (condition.kind === "slotExists") return false;
   if (condition.kind === "and") return condition.conditions.every((child) => evaluateCondition(child, ctx));
   if (condition.kind === "or") return condition.conditions.some((child) => evaluateCondition(child, ctx));
   if (condition.kind === "not") return !evaluateCondition(condition.condition, ctx);
@@ -274,18 +275,21 @@ function evaluateCondition(condition: EffectCondition, ctx: EngineContext): bool
     if (condition.operator === "lt") return nodeValue < compareValue;
     return nodeValue === compareValue;
   }
+  if (condition.kind === "compareSlot") return false;
   return false;
 }
 
 function evaluateSource(source: EffectSource, ctx: EngineContext): number | null {
   if (source.kind === "number") return source.value;
   if (source.kind === "node") return readNodeField(ctx.nodes.get(source.nodeId), source.field);
+  if (source.kind === "templateSlot") return null;
   return evaluateFormula(source.expression, ctx);
 }
 
 function evaluateFormula(expression: FormulaExpression, ctx: EngineContext): number | null {
   if (expression.kind === "const") return expression.value;
   if (expression.kind === "ref") return readNodeField(ctx.nodes.get(expression.nodeId), expression.field);
+  if (expression.kind === "slotRef") return null;
 
   const left = evaluateFormula(expression.left, ctx);
   const right = evaluateFormula(expression.right, ctx);
@@ -352,6 +356,7 @@ function collectSourceNodeIds(source: EffectSource): string[] {
 
 function collectFormulaNodeIds(expression: FormulaExpression): string[] {
   if (expression.kind === "ref") return [expression.nodeId];
+  if (expression.kind === "slotRef") return [];
   if (expression.kind === "const") return [];
   return [...collectFormulaNodeIds(expression.left), ...collectFormulaNodeIds(expression.right)];
 }
@@ -359,6 +364,8 @@ function collectFormulaNodeIds(expression: FormulaExpression): string[] {
 function collectConditionNodeIds(condition: EffectCondition): string[] {
   if (condition.kind === "fieldExists") return [condition.nodeId];
   if (condition.kind === "compare") return [condition.nodeId, ...collectSourceNodeIds(condition.value)];
+  if (condition.kind === "slotExists") return [];
+  if (condition.kind === "compareSlot") return collectSourceNodeIds(condition.value);
   if (condition.kind === "and" || condition.kind === "or") return condition.conditions.flatMap(collectConditionNodeIds);
   if (condition.kind === "not") return collectConditionNodeIds(condition.condition);
   return [];

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Pencil, Save, Trash2, X } from "lucide-react";
 import type { CharacterNodeModel, NodeType } from "@/domain/nodes";
+import type { TemplateSlotModel } from "@/domain/template-slots";
 import { getNumericPatchFields, getStructuralPatchFields, type PatchFieldDefinition } from "@/domain/node-patches";
 import {
   diagnoseEffectReferences,
@@ -27,7 +28,7 @@ const structuralOperations: Operation[] = ["CREATE_NODE", "CREATE_GROUP", "PATCH
 const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
 const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
 
-export function EffectManager({ nodes, effects, rootLabel }: { nodes: CharacterNodeModel[]; effects: EffectItem[]; title?: string; rootLabel?: string }) {
+export function EffectManager({ nodes, effects, rootLabel, slots = [] }: { nodes: CharacterNodeModel[]; effects: EffectItem[]; title?: string; rootLabel?: string; slots?: TemplateSlotModel[] }) {
   const { t } = useI18n();
   const router = useRouter();
   const resolvedRootLabel = rootLabel ?? t("common.rootCharacter");
@@ -107,6 +108,7 @@ export function EffectManager({ nodes, effects, rootLabel }: { nodes: CharacterN
             key={editing.id}
             effect={editing}
             nodes={nodes}
+            slots={slots}
             pending={pendingId === editing.id}
             rootLabel={resolvedRootLabel}
             onCancel={() => setEditingId(null)}
@@ -120,9 +122,10 @@ export function EffectManager({ nodes, effects, rootLabel }: { nodes: CharacterN
   );
 }
 
-function EffectEditor({ effect, nodes, pending, rootLabel, onCancel, onDelete, onSave }: {
+function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDelete, onSave }: {
   effect: EffectItem;
   nodes: CharacterNodeModel[];
+  slots: TemplateSlotModel[];
   pending: boolean;
   rootLabel: string;
   onCancel: () => void;
@@ -140,12 +143,16 @@ function EffectEditor({ effect, nodes, pending, rootLabel, onCancel, onDelete, o
   const initialPayload = effect.payload?.createNode;
   const [createdType, setCreatedType] = useState<NodeType>(initialPayload?.type ?? "NUMBER");
   const numericNodes = nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR");
+  const numericSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"));
   const containers = nodes.filter((node) => node.type === "CONTAINER" || node.type === "GROUP");
+  const containerSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "CONTAINER" || type === "GROUP"));
   const isNumeric = numericOperations.includes(operation);
   const isPatch = operation === "PATCH_NODE_PROPS";
-  const selectedTarget = nodes.find((node) => node.id === selectedTargetId) ?? null;
-  const patchFields = useMemo(() => selectedTarget ? getStructuralPatchFields(selectedTarget.type) : [], [selectedTarget]);
-  const numericFields = useMemo(() => selectedTarget ? getNumericPatchFields(selectedTarget.type) : [], [selectedTarget]);
+  const selectedTargetValue = parseTemplateSelectValue(selectedTargetId);
+  const selectedTarget = selectedTargetValue.kind === "node" ? nodes.find((node) => node.id === selectedTargetValue.id) ?? null : null;
+  const selectedTargetSlot = selectedTargetValue.kind === "slot" ? slots.find((slot) => slot.id === selectedTargetValue.id) ?? null : null;
+  const patchFields = useMemo(() => selectedTarget ? getStructuralPatchFields(selectedTarget.type) : selectedTargetSlot ? commonStructuralFields : [], [selectedTarget, selectedTargetSlot]);
+  const numericFields = useMemo(() => selectedTarget ? getNumericPatchFields(selectedTarget.type) : selectedTargetSlot ? commonNumericFields : [], [selectedTarget, selectedTargetSlot]);
   const [numericField, setNumericField] = useState(initialNumericField(effect, numericFields));
   const [patchField, setPatchField] = useState(initialPatchField(effect, patchFields));
   const selectedPatchField = patchFields.find((field) => field.field === patchField) ?? patchFields[0] ?? null;
@@ -205,26 +212,26 @@ function EffectEditor({ effect, nodes, pending, rootLabel, onCancel, onDelete, o
       </div>
       <label className="flex items-center gap-2 text-sm"><input name="enabled" type="checkbox" defaultChecked={effect.enabled} />{t("effect.enabled")}</label>
       <Labeled label={t("effect.operation")}><select value={operation} onChange={(event) => setOperation(event.target.value as Operation)} className={selectClass}>{[...numericOperations, ...structuralOperations].map((item) => <option key={item} value={item}>{operationLabel(item, t)}</option>)}</select></Labeled>
-      <Labeled label={t("effect.target")}><select name="targetNodeId" required value={selectedTargetId || (effect.target.kind === "root" ? "__ROOT__" : "")} onChange={(event) => setSelectedTargetId(event.target.value)} className={selectClass}><option value="">{t("effect.selectTarget")}</option>{!isNumeric && !isPatch && <option value="__ROOT__">{rootLabel}</option>}{(isNumeric ? numericNodes : isPatch ? nodes : containers).map((node) => <option key={node.id} value={node.id}>{node.name}</option>)}</select></Labeled>
+      <Labeled label={t("effect.target")}><select name="targetNodeId" required value={selectedTargetId || (effect.target.kind === "root" ? "__ROOT__" : "")} onChange={(event) => setSelectedTargetId(event.target.value)} className={selectClass}><option value="">{t("effect.selectTarget")}</option>{!isNumeric && !isPatch && <option value="__ROOT__">{rootLabel}</option>}{(isNumeric ? numericNodes : isPatch ? nodes : containers).map((node) => <option key={node.id} value={node.id}>{node.name}</option>)}{(isNumeric ? numericSlots : isPatch ? slots : containerSlots).map((slot) => <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>)}</select></Labeled>
       {isNumeric && <Labeled label={t("effect.numericField")}><select name="numericField" required value={numericField} onChange={(event) => setNumericField(event.target.value)} className={selectClass}><option value="">{t("effect.numericField")}</option>{numericFields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}</select></Labeled>}
 
-      {isNumeric && <SourceFields effect={effect} nodes={numericNodes} kind={sourceKind} setKind={setSourceKind} />}
+      {isNumeric && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} />}
       <ConditionFields condition={effect.condition} nodes={nodes} kind={conditionKind} setKind={setConditionKind} />
       {!isNumeric && !isPatch && <CreatedNodeFields payload={initialPayload} operation={operation} type={createdType} setType={setCreatedType} />}
       {isPatch && <PatchFields fields={patchFields} selectedField={selectedPatchField} value={patchField} setValue={setPatchField} patch={effect.payload?.patch} mode={patchMode} setMode={setPatchMode} targetType={selectedTarget?.type} />}
-      {isPatch && patchMode === "source" && selectedPatchField?.derived && <SourceFields effect={effect} nodes={numericNodes} kind={sourceKind} setKind={setSourceKind} />}
+      {isPatch && patchMode === "source" && selectedPatchField?.derived && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} />}
 
       <div className="flex w-full flex-wrap gap-2"><Button type="submit" disabled={pending}><Save className="h-4 w-4" />{pending ? t("common.saving") : t("common.save")}</Button><Button type="button" variant="ghost" disabled={pending} onClick={onCancel}><X className="h-4 w-4" />{t("common.cancel")}</Button><Button type="button" variant="outline" className="ml-auto border-destructive/40 text-destructive hover:bg-destructive/10" disabled={pending} onClick={onDelete}><Trash2 className="h-4 w-4" />{t("effect.delete")}</Button></div>
     </form>
   );
 }
 
-function SourceFields({ effect, nodes, kind, setKind }: { effect: EffectItem; nodes: CharacterNodeModel[]; kind: string; setKind: (kind: string) => void }) {
+function SourceFields({ effect, nodes, slots, kind, setKind }: { effect: EffectItem; nodes: CharacterNodeModel[]; slots: TemplateSlotModel[]; kind: string; setKind: (kind: string) => void }) {
   const { t } = useI18n();
   const source = effect.source;
   const formula = source.kind === "formula" ? source.expression : null;
   const simpleFormula = formula && isSimpleFormula(formula) ? formula : null;
-  return <div className="space-y-3"><Labeled label={t("effect.source")}><select value={kind} onChange={(event) => setKind(event.target.value)} className={selectClass}>{!isEditableSource(source) && <option value="current">{t("effect.currentComplexSource")}</option>}<option value="number">{t("effect.number")}</option><option value="node">{t("effect.otherNode")}</option><option value="formula">{t("effect.formulaNodeNumber")}</option></select></Labeled>{kind === "number" && <Field label={t("common.value")} name="sourceValue" type="number" step="any" required defaultValue={source.kind === "number" ? source.value : 0} />}{kind === "node" && <NodeSelect label={t("effect.nodeSource")} name="sourceNodeId" nodes={nodes} defaultValue={source.kind === "node" ? source.nodeId : ""} />}{kind === "formula" && <div className="grid grid-cols-[minmax(0,1fr)_88px_100px] gap-2"><NodeSelect label={t("node.label")} name="formulaNodeId" nodes={nodes} defaultValue={simpleFormula?.left.nodeId ?? ""} compact /><Labeled label={t("effect.action")}><select name="formulaOperator" defaultValue={simpleFormula?.kind ?? "multiply"} className={selectClass}><option value="add">+</option><option value="subtract">-</option><option value="multiply">x</option><option value="divide">/</option></select></Labeled><Field label={t("effect.number")} name="formulaValue" type="number" step="any" required defaultValue={simpleFormula?.right.value ?? 1} /></div>}</div>;
+  return <div className="space-y-3"><Labeled label={t("effect.source")}><select value={kind} onChange={(event) => setKind(event.target.value)} className={selectClass}>{!isEditableSource(source) && <option value="current">{t("effect.currentComplexSource")}</option>}<option value="number">{t("effect.number")}</option><option value="node">{t("effect.otherNode")}</option><option value="formula">{t("effect.formulaNodeNumber")}</option></select></Labeled>{kind === "number" && <Field label={t("common.value")} name="sourceValue" type="number" step="any" required defaultValue={source.kind === "number" ? source.value : 0} />}{kind === "node" && <NodeSelect label={t("effect.nodeSource")} name="sourceNodeId" nodes={nodes} slots={slots} defaultValue={source.kind === "node" ? source.nodeId : source.kind === "templateSlot" ? `slot:${source.slotId}` : ""} />}{kind === "formula" && <div className="grid grid-cols-[minmax(0,1fr)_88px_100px] gap-2"><NodeSelect label={t("node.label")} name="formulaNodeId" nodes={nodes} slots={slots} defaultValue={simpleFormula ? formulaRefValue(simpleFormula.left) : ""} compact /><Labeled label={t("effect.action")}><select name="formulaOperator" defaultValue={simpleFormula?.kind ?? "multiply"} className={selectClass}><option value="add">+</option><option value="subtract">-</option><option value="multiply">x</option><option value="divide">/</option></select></Labeled><Field label={t("effect.number")} name="formulaValue" type="number" step="any" required defaultValue={simpleFormula?.right.value ?? 1} /></div>}</div>;
 }
 
 function ConditionFields({ condition, nodes, kind, setKind }: { condition: EffectCondition; nodes: CharacterNodeModel[]; kind: string; setKind: (kind: string) => void }) {
@@ -239,7 +246,49 @@ function CreatedNodeFields({ payload, operation, type, setType }: { payload?: Ef
   const { t } = useI18n();
   const data = payload?.data ?? {};
   const actualType = operation === "CREATE_GROUP" ? "GROUP" : type;
-  return <div className="space-y-3"><Field label={t("effect.createdNodeName")} name="createdName" required defaultValue={payload?.name ?? ""} />{operation === "CREATE_NODE" && <Labeled label={t("common.type")}><select value={type} onChange={(event) => setType(event.target.value as NodeType)} className={selectClass}>{nodeTypes.map((item) => <option key={item}>{item}</option>)}</select></Labeled>}<Field label={t("common.description")} name="createdDescription" defaultValue={String(data.description ?? "")} /><NodeIconPicker type={actualType} defaultValue={data.icon} />{actualType === "NUMBER" && <div className="grid grid-cols-3 gap-2"><Field label={t("common.value")} name="createdValue" type="number" step="any" defaultValue={String(data.value ?? 0)} /><Field label={t("node.minimum")} name="createdMin" type="number" step="any" defaultValue={data.min == null ? "" : String(data.min)} /><Field label={t("node.maximum")} name="createdMax" type="number" step="any" defaultValue={data.max == null ? "" : String(data.max)} /></div>}{actualType === "BAR" && <div className="grid grid-cols-2 gap-2"><Field label={t("node.current")} name="createdCurrent" type="number" step="any" defaultValue={String(data.current ?? 0)} /><Field label={t("node.maximum")} name="createdBarMax" type="number" step="any" defaultValue={String(data.max ?? 10)} /></div>}{actualType === "TEXT" && <Labeled label={t("node.text")}><textarea name="createdText" defaultValue={String(data.text ?? "")} className="min-h-28 w-full resize-y rounded-md border bg-background p-3 text-sm" /></Labeled>}{actualType === "GROUP" && <Field label={t("node.groupColor")} name="createdColor" defaultValue={String(data.color ?? "teal")} />}{actualType === "CONTAINER" && <label className="flex items-center gap-2 text-sm"><input name="createdCollapsed" type="checkbox" defaultChecked={Boolean(data.collapsedByDefault)} />{t("node.collapsedDefault")}</label>}</div>;
+  return (
+    <div className="space-y-3">
+      <Field label={t("effect.createdNodeName")} name="createdName" required defaultValue={payload?.name ?? ""} />
+      {operation === "CREATE_NODE" && (
+        <Labeled label={t("common.type")}>
+          <select value={type} onChange={(event) => setType(event.target.value as NodeType)} className={selectClass}>
+            {nodeTypes.map((item) => <option key={item}>{item}</option>)}
+          </select>
+        </Labeled>
+      )}
+      <Field label={t("common.description")} name="createdDescription" defaultValue={String(data.description ?? "")} />
+      <div className="space-y-2 rounded-md border p-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input name="createdCollapsed" type="checkbox" defaultChecked={Boolean(data.collapsedByDefault)} />
+          {t("node.collapsedDefault")}
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input name="createdHiddenFromPlayer" type="checkbox" defaultChecked={Boolean(data.hiddenFromPlayer)} />
+          {t("node.hiddenFromPlayer")}
+        </label>
+      </div>
+      <NodeIconPicker type={actualType} defaultValue={data.icon} />
+      {actualType === "NUMBER" && (
+        <div className="grid grid-cols-3 gap-2">
+          <Field label={t("common.value")} name="createdValue" type="number" step="any" defaultValue={String(data.value ?? 0)} />
+          <Field label={t("node.minimum")} name="createdMin" type="number" step="any" defaultValue={data.min == null ? "" : String(data.min)} />
+          <Field label={t("node.maximum")} name="createdMax" type="number" step="any" defaultValue={data.max == null ? "" : String(data.max)} />
+        </div>
+      )}
+      {actualType === "BAR" && (
+        <div className="grid grid-cols-2 gap-2">
+          <Field label={t("node.current")} name="createdCurrent" type="number" step="any" defaultValue={String(data.current ?? 0)} />
+          <Field label={t("node.maximum")} name="createdBarMax" type="number" step="any" defaultValue={String(data.max ?? 10)} />
+        </div>
+      )}
+      {actualType === "TEXT" && (
+        <Labeled label={t("node.text")}>
+          <textarea name="createdText" defaultValue={String(data.text ?? "")} className="min-h-28 w-full resize-y rounded-md border bg-background p-3 text-sm" />
+        </Labeled>
+      )}
+      {actualType === "GROUP" && <Field label={t("node.groupColor")} name="createdColor" defaultValue={String(data.color ?? "teal")} />}
+    </div>
+  );
 }
 
 function PatchFields({
@@ -298,9 +347,9 @@ function StaticPatchField({ field, patch, targetType }: { field: PatchFieldDefin
 
 function Field({ label, ...props }: React.ComponentProps<typeof Input> & { label: string }) { return <Labeled label={label}><Input {...props} /></Labeled>; }
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block space-y-2 text-sm font-medium"><span>{label}</span>{children}</label>; }
-function NodeSelect({ label, name, nodes, defaultValue, compact = false }: { label: string; name: string; nodes: CharacterNodeModel[]; defaultValue: string; compact?: boolean }) { const { t } = useI18n(); return <Labeled label={label}><select name={name} required defaultValue={defaultValue} className={selectClass}><option value="">{t("effect.selectNode")}</option>{nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>)}</select>{compact ? null : null}</Labeled>; }
+function NodeSelect({ label, name, nodes, slots = [], defaultValue, compact = false }: { label: string; name: string; nodes: CharacterNodeModel[]; slots?: TemplateSlotModel[]; defaultValue: string; compact?: boolean }) { const { t } = useI18n(); return <Labeled label={label}><select name={name} required defaultValue={defaultValue} className={selectClass}><option value="">{t("effect.selectNode")}</option>{nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>)}{slots.map((slot) => <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>)}</select>{compact ? null : null}</Labeled>; }
 
-function targetNodeId(effect: EffectDefinition) { if (effect.target.kind === "node") return effect.target.nodeId; if (effect.target.kind === "parent") return effect.target.parentNodeId; return null; }
+function targetNodeId(effect: EffectDefinition) { if (effect.target.kind === "node") return effect.target.nodeId; if (effect.target.kind === "templateSlot") return `slot:${effect.target.slotId}`; if (effect.target.kind === "parent") return effect.target.parentNodeId; return null; }
 function initialPatchField(effect: EffectDefinition, fields: PatchFieldDefinition[]) {
   if (effect.payload?.patchFromSource?.field) return effect.payload.patchFromSource.field;
   const patched = Object.keys(effect.payload?.patch ?? {}).find((field) => fields.some((candidate) => candidate.field === field));
@@ -312,18 +361,69 @@ function initialNumericField(effect: EffectDefinition, fields: PatchFieldDefinit
   if (effect.operation === "SET_BAR_MAX" && fields.some((candidate) => candidate.field === "max")) return "max";
   return fields[0]?.field ?? "";
 }
-function initialSourceKind(source: EffectSource) { return isEditableSource(source) ? source.kind : "current"; }
+function initialSourceKind(source: EffectSource) { if (source.kind === "templateSlot") return "node"; return isEditableSource(source) ? source.kind : "current"; }
 function isEditableSource(source: EffectSource) { return source.kind !== "formula" || isSimpleFormula(source.expression); }
-function isSimpleFormula(expression: FormulaExpression): expression is Extract<FormulaExpression, { kind: "add" | "subtract" | "multiply" | "divide" }> & { left: Extract<FormulaExpression, { kind: "ref" }>; right: Extract<FormulaExpression, { kind: "const" }> } { return ["add", "subtract", "multiply", "divide"].includes(expression.kind) && "left" in expression && expression.left.kind === "ref" && expression.right.kind === "const"; }
+function isSimpleFormula(expression: FormulaExpression): expression is Extract<FormulaExpression, { kind: "add" | "subtract" | "multiply" | "divide" }> & { left: Extract<FormulaExpression, { kind: "ref" | "slotRef" }>; right: Extract<FormulaExpression, { kind: "const" }> } { return ["add", "subtract", "multiply", "divide"].includes(expression.kind) && "left" in expression && (expression.left.kind === "ref" || expression.left.kind === "slotRef") && expression.right.kind === "const"; }
+function formulaRefValue(expression: Extract<FormulaExpression, { kind: "ref" | "slotRef" }>) { return expression.kind === "slotRef" ? `slot:${expression.slotId}` : expression.nodeId; }
 function initialConditionKind(condition: EffectCondition) { if (condition.kind === "always") return "always"; if (condition.kind === "fieldExists") return "exists"; if (condition.kind === "compare" && condition.value.kind === "number") return condition.operator; return "current"; }
 function readCondition(kind: string, data: FormData, current: EffectCondition): EffectCondition { if (kind === "current") return current; if (kind === "always") return { kind: "always" }; const nodeId = String(data.get("conditionNodeId")); if (kind === "exists") return { kind: "fieldExists", nodeId }; return { kind: "compare", nodeId, operator: kind as "gt" | "lt" | "eq", value: { kind: "number", value: Number(data.get("conditionValue")) } }; }
-function readSource(kind: string, data: FormData, current: EffectSource): EffectSource { if (kind === "current") return current; if (kind === "number") return { kind: "number", value: Number(data.get("sourceValue")) }; if (kind === "node") return { kind: "node", nodeId: String(data.get("sourceNodeId")), field: "value" }; return { kind: "formula", expression: { kind: String(data.get("formulaOperator")) as "add" | "subtract" | "multiply" | "divide", left: { kind: "ref", nodeId: String(data.get("formulaNodeId")), field: "value" }, right: { kind: "const", value: Number(data.get("formulaValue")) } } }; }
+function readSource(kind: string, data: FormData, current: EffectSource): EffectSource { if (kind === "current") return current; if (kind === "number") return { kind: "number", value: Number(data.get("sourceValue")) }; if (kind === "node") return readNodeOrSlotSource(String(data.get("sourceNodeId"))); return { kind: "formula", expression: readNodeOrSlotFormulaRef(String(data.get("formulaNodeId")), String(data.get("formulaOperator")), Number(data.get("formulaValue"))) }; }
 function readStaticPatch(field: PatchFieldDefinition, data: FormData) {
   if (field.field === "icon") return { icon: String(data.get("icon") ?? "") || undefined };
   if (field.kind === "number") return { [field.field]: Number(data.get("patchNumberValue")) };
   if (field.kind === "boolean") return { [field.field]: data.get("patchBooleanValue") === "on" };
   return { [field.field]: String(data.get("patchTextValue") ?? "") };
 }
-function readCreatedData(type: NodeType, data: FormData, current: Record<string, unknown> | undefined) { const description = String(data.get("createdDescription") ?? ""); const icon = String(data.get("icon") ?? ""); if (type === "NUMBER") return { value: Number(data.get("createdValue") ?? 0), min: nullableNumber(data.get("createdMin")), max: nullableNumber(data.get("createdMax")), allowNegative: Boolean(current?.allowNegative), description, icon }; if (type === "BAR") return { current: Number(data.get("createdCurrent") ?? 0), max: Number(data.get("createdBarMax") ?? 10), description, icon }; if (type === "TEXT") return { text: String(data.get("createdText") ?? ""), description, icon }; if (type === "TABLE") return { columns: Array.isArray(current?.columns) ? current.columns : [], rows: Array.isArray(current?.rows) ? current.rows : [], description, icon }; if (type === "CONTAINER") return { collapsedByDefault: data.get("createdCollapsed") === "on", description, icon }; return { color: String(data.get("createdColor") ?? "teal"), description, icon }; }
+function readCreatedData(type: NodeType, data: FormData, current: Record<string, unknown> | undefined) {
+  const common = {
+    description: String(data.get("createdDescription") ?? ""),
+    icon: String(data.get("icon") ?? ""),
+    collapsedByDefault: data.get("createdCollapsed") === "on",
+    hiddenFromPlayer: data.get("createdHiddenFromPlayer") === "on",
+  };
+  if (type === "NUMBER") return { ...common, value: Number(data.get("createdValue") ?? 0), min: nullableNumber(data.get("createdMin")), max: nullableNumber(data.get("createdMax")), allowNegative: Boolean(current?.allowNegative) };
+  if (type === "BAR") return { ...common, current: Number(data.get("createdCurrent") ?? 0), max: Number(data.get("createdBarMax") ?? 10) };
+  if (type === "TEXT") return { ...common, text: String(data.get("createdText") ?? "") };
+  if (type === "TABLE") return { ...common, columns: Array.isArray(current?.columns) ? current.columns : [], rows: Array.isArray(current?.rows) ? current.rows : [] };
+  if (type === "CONTAINER") return common;
+  return { ...common, color: String(data.get("createdColor") ?? "teal") };
+}
 function nullableNumber(value: FormDataEntryValue | null) { const raw = String(value ?? ""); return raw === "" ? null : Number(raw); }
 function operationLabel(operation: Operation, t: ReturnType<typeof useI18n>["t"]) { return ({ ADD: t("effect.add"), SUBTRACT: t("effect.subtract"), MULTIPLY: t("effect.multiply"), PERCENT_BONUS: t("effect.percentBonus"), SET_BAR_MAX: t("effect.setNumericField"), CREATE_NODE: t("effect.createNode"), CREATE_GROUP: t("effect.createGroup"), PATCH_NODE_PROPS: t("effect.patchNode") } as Record<Operation, string>)[operation]; }
+
+const commonNumericFields: PatchFieldDefinition[] = [
+  { field: "value", labelKey: "common.value", kind: "number", derived: false },
+  { field: "current", labelKey: "node.current", kind: "number", derived: false },
+  { field: "min", labelKey: "node.minimum", kind: "number", derived: false },
+  { field: "max", labelKey: "node.maximum", kind: "number", derived: false },
+];
+
+const commonStructuralFields: PatchFieldDefinition[] = [
+  { field: "collapsedByDefault", labelKey: "node.collapsedDefault", kind: "boolean", derived: false },
+  { field: "hiddenFromPlayer", labelKey: "node.hiddenFromPlayer", kind: "boolean", derived: false },
+  { field: "description", labelKey: "common.description", kind: "text", derived: false },
+  { field: "icon", labelKey: "icons.label", kind: "text", derived: false },
+];
+
+function parseTemplateSelectValue(value: string) {
+  return value.startsWith("slot:")
+    ? { kind: "slot" as const, id: value.slice("slot:".length) }
+    : { kind: "node" as const, id: value };
+}
+
+function readNodeOrSlotSource(value: string): EffectSource {
+  const parsed = parseTemplateSelectValue(value);
+  if (parsed.kind === "slot") return { kind: "templateSlot", slotId: parsed.id, field: "value" };
+  return { kind: "node", nodeId: parsed.id, field: "value" };
+}
+
+function readNodeOrSlotFormulaRef(value: string, operator: string, amount: number): FormulaExpression {
+  const parsed = parseTemplateSelectValue(value);
+  return {
+    kind: operator as "add" | "subtract" | "multiply" | "divide",
+    left: parsed.kind === "slot"
+      ? { kind: "slotRef", slotId: parsed.id, field: "value" }
+      : { kind: "ref", nodeId: parsed.id, field: "value" },
+    right: { kind: "const", value: amount },
+  };
+}

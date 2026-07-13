@@ -1,35 +1,58 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Pencil, Plus } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, Pencil, Plus, Search } from "lucide-react";
 import type { NodeTreeItem } from "@/domain/nodes";
 import { useCharacterUiStore } from "@/store/character-ui-store";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { NodeValue } from "@/components/characters/node-value";
 import { TablePreview } from "@/components/characters/table-editor";
 import { getNodeIconComponent } from "@/components/characters/node-icons";
 import { useI18n } from "@/i18n/client";
 
-export function CharacterTree({ nodes, editorSectionId = "node-editor" }: { nodes: NodeTreeItem[]; editorSectionId?: string }) {
+export function CharacterTree({ nodes, editorSectionId = "node-editor", searchable = false }: { nodes: NodeTreeItem[]; editorSectionId?: string; searchable?: boolean }) {
   const { t } = useI18n();
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleNodes = useMemo(() => normalizedQuery ? filterNodeTree(nodes, normalizedQuery) : nodes, [nodes, normalizedQuery]);
   if (nodes.length === 0) {
     return <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">{t("node.noNodes")}</div>;
   }
 
   return (
-    <div className="space-y-1">
-      {nodes.map((node) => (
-        <TreeRow key={node.id} node={node} depth={0} editorSectionId={editorSectionId} />
-      ))}
+    <div className="space-y-3">
+      {searchable && (
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("node.searchPlaceholder")}
+            aria-label={t("common.search")}
+          />
+        </div>
+      )}
+      {visibleNodes.length === 0 ? (
+        <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">{t("node.noSearchMatches")}</div>
+      ) : (
+        <div className="space-y-1">
+          {visibleNodes.map((node) => (
+            <TreeRow key={node.id} node={node} depth={0} editorSectionId={editorSectionId} forceExpanded={Boolean(normalizedQuery)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function TreeRow({ node, depth, editorSectionId }: { node: NodeTreeItem; depth: number; editorSectionId: string }) {
+function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTreeItem; depth: number; editorSectionId: string; forceExpanded: boolean }) {
   const { t } = useI18n();
-  const { collapsedNodeIds, selectedNodeId, toggleNode, selectNode, setEditorMode, openSidebarSection } = useCharacterUiStore();
-  const collapsed = collapsedNodeIds.has(node.id);
+  const { collapsedNodeIds, expandedNodeIds, selectedNodeId, toggleNode, selectNode, setEditorMode, openSidebarSection } = useCharacterUiStore();
+  const collapsedByDefault = Boolean(node.data.collapsedByDefault);
+  const collapsed = !forceExpanded && (collapsedByDefault ? !expandedNodeIds.has(node.id) : collapsedNodeIds.has(node.id));
   const selected = selectedNodeId === node.id;
   const hasChildren = node.children.length > 0;
   const Icon = getNodeIconComponent(node.data.icon, node.type);
@@ -53,7 +76,7 @@ function TreeRow({ node, depth, editorSectionId }: { node: NodeTreeItem; depth: 
           className="h-8 w-8"
           onClick={(event) => {
             event.stopPropagation();
-            if (hasChildren) toggleNode(node.id);
+            if (hasChildren) toggleNode(node.id, collapsedByDefault);
           }}
         >
           {hasChildren ? collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" /> : <span className="h-4 w-4" />}
@@ -123,7 +146,27 @@ function TreeRow({ node, depth, editorSectionId }: { node: NodeTreeItem; depth: 
         </div>
       )}
       {!collapsed &&
-        node.children.map((child) => <TreeRow key={child.id} node={child} depth={depth + 1} editorSectionId={editorSectionId} />)}
+        node.children.map((child) => <TreeRow key={child.id} node={child} depth={depth + 1} editorSectionId={editorSectionId} forceExpanded={forceExpanded} />)}
     </div>
   );
+}
+
+function filterNodeTree(nodes: NodeTreeItem[], query: string): NodeTreeItem[] {
+  const result: NodeTreeItem[] = [];
+  for (const node of nodes) {
+    const matches = nodeMatches(node, query);
+    const filteredChildren = filterNodeTree(node.children, query);
+    if (matches) {
+      result.push(node);
+    } else if (filteredChildren.length > 0) {
+      result.push({ ...node, children: filteredChildren });
+    }
+  }
+  return result;
+}
+
+function nodeMatches(node: NodeTreeItem, query: string) {
+  const description = typeof node.data.description === "string" ? node.data.description : "";
+  const text = node.type === "TEXT" && "text" in node.data ? node.data.text : "";
+  return [node.name, node.path, node.type, description, text].some((value) => value.toLowerCase().includes(query));
 }

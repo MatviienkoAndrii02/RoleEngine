@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { buildNodeTree, type CharacterNodeModel } from "@/domain/nodes";
+import { removePlayerHiddenSubtrees } from "@/domain/node-visibility";
+import { parseAcceptedNodeTypes } from "@/domain/template-slots";
 import { DependencyEngine, type NodeCalculation } from "@/engine/dependency-engine";
 import { CharacterTree } from "@/components/characters/character-tree";
 import { NodeEditor } from "@/components/characters/node-editor";
-import { ApplyTemplate } from "@/components/characters/apply-template";
 import { NumericEffectBuilder } from "@/components/characters/numeric-effect-builder";
 import { StructuralEffectBuilder } from "@/components/characters/structural-effect-builder";
 import { EffectManager } from "@/components/characters/effect-manager";
@@ -59,6 +60,11 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
   let diagnostics = [...parsedNodes.diagnostics, ...parsedEffects.diagnostics];
   const nodes = parsedNodes.nodes;
   const effects = parsedEffects.effects;
+  const writableMembership = await prisma.workspaceMembership.findFirst({
+    where: { workspaceId: data.workspaceId, userId: user.id, role: { in: ["OWNER", "GM"] } },
+    select: { id: true },
+  });
+  const canEdit = Boolean(writableMembership);
   const engineResult = new DependencyEngine(nodes, effects).evaluate();
   const calculations = [...engineResult.calculations.values()] as NodeCalculation[];
   const changedCalculations = calculations.filter((calculation) => !sameNumber(calculation.base, calculation.final));
@@ -74,18 +80,29 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
     }
     return { ...node, data: patchedData } as CharacterNodeModel;
   });
-  const writableMembership = await prisma.workspaceMembership.findFirst({
-    where: { workspaceId: data.workspaceId, userId: user.id, role: { in: ["OWNER", "GM"] } },
-    select: { id: true },
-  });
-  const canEdit = Boolean(writableMembership);
+  const visibleDisplayNodes = canEdit ? displayNodes : removePlayerHiddenSubtrees(displayNodes);
+  const visibleNodeIds = new Set(visibleDisplayNodes.map((node) => node.id));
+  const visibleNodes = nodes.filter((node) => visibleNodeIds.has(node.id));
+  const visibleChangedCalculations = canEdit
+    ? changedCalculations
+    : changedCalculations.filter((calculation) => visibleNodeIds.has(calculation.nodeId));
+  const visibleChangedCalculationNodeIds = new Set(visibleChangedCalculations.map((calculation) => calculation.nodeId));
+  const visibleChangedDependencyEdges = canEdit
+    ? changedDependencyEdges
+    : changedDependencyEdges.filter((edge) => visibleChangedCalculationNodeIds.has(edge.targetNodeId) && visibleNodeIds.has(edge.sourceNodeId));
   const templates = canEdit
     ? await prisma.entityTemplate.findMany({
         where: { archivedAt: null, OR: [{ workspaceId: data.workspaceId }, { workspaceId: null, isGlobal: true }] },
-        select: { id: true, name: true, kind: true },
+        select: { id: true, name: true, kind: true, slots: { orderBy: { createdAt: "asc" } } },
         orderBy: [{ kind: "asc" }, { name: "asc" }]
       })
     : [];
+  const templateOptions = templates.map((template) => ({
+    id: template.id,
+    name: template.name,
+    kind: template.kind,
+    slots: template.slots.map((slot) => ({ ...slot, acceptedTypes: parseAcceptedNodeTypes(slot.acceptedTypes) })),
+  }));
   const players = canEdit
     ? await prisma.user.findMany({
         where: { workspaceMemberships: { some: { workspaceId: data.workspaceId, role: "PLAYER" } } },
@@ -132,7 +149,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
             <CardTitle>{t("character.nodeTree")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <CharacterTree nodes={buildNodeTree(displayNodes)} />
+            <CharacterTree nodes={buildNodeTree(visibleDisplayNodes)} searchable />
           </CardContent>
         </Card>
         <div className="space-y-6">
@@ -151,13 +168,8 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
             </SidebarSection>
           )}
           {canEdit && (
-            <SidebarSection id="apply-template" title={t("character.applyTemplate")} count={templates.length}>
-              <ApplyTemplate characterId={characterId} templates={templates} nodes={nodes} />
-            </SidebarSection>
-          )}
-          {canEdit && (
             <SidebarSection id="node-editor" title={t("character.nodeEditor")}>
-              <NodeEditor characterId={characterId} nodes={nodes} />
+              <NodeEditor characterId={characterId} nodes={nodes} templates={templateOptions} />
             </SidebarSection>
           )}
           {canEdit && (
@@ -180,11 +192,11 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
               <NodeArchive characterId={characterId} items={archivedItems} />
             </SidebarSection>
           )}
-          <SidebarSection id="dependencies" title={t("character.dependencies")} count={changedCalculations.length}>
-            <DependencyPanel calculations={changedCalculations} nodes={nodes} edges={changedDependencyEdges} />
+          <SidebarSection id="dependencies" title={t("character.dependencies")} count={visibleChangedCalculations.length}>
+            <DependencyPanel calculations={visibleChangedCalculations} nodes={visibleNodes} edges={visibleChangedDependencyEdges} />
           </SidebarSection>
           <SidebarSection id="history" title={t("character.history")} count={data.auditLogs.length}>
-            <AuditList logs={data.auditLogs} nodes={nodes} effects={effects} />
+            <AuditList logs={data.auditLogs} nodes={visibleNodes} effects={effects} />
           </SidebarSection>
         </div>
       </div>
