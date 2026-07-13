@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { archiveTemplate, updateTemplate } from "@/server/actions/templates";
+import { archiveTemplate, permanentlyDeleteTemplate, updateTemplate } from "@/server/actions/templates";
 import { updateTemplateCommandSchema } from "@/domain/validation";
 import { inputErrorResponse, parseJson } from "@/server/api-validation";
 
@@ -15,10 +15,12 @@ export async function PATCH(request: Request, { params }: Context) {
   }
 }
 
-export async function DELETE(_: Request, { params }: Context) {
+export async function DELETE(request: Request, { params }: Context) {
   try {
     const { templateId } = await params;
-    await archiveTemplate(templateId);
+    const permanent = new URL(request.url).searchParams.get("permanent") === "1";
+    if (permanent) await permanentlyDeleteTemplate(templateId);
+    else await archiveTemplate(templateId);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return inputErrorResponse(error);

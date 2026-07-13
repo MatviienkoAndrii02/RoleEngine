@@ -119,6 +119,44 @@ export async function archiveTemplate(templateId: string) {
   revalidatePath("/templates");
 }
 
+export async function restoreTemplate(templateId: string) {
+  const actor = await requireGM();
+  const { template: current } = await requireTemplateGM(templateId, { archived: "archived" });
+  const template = await prisma.entityTemplate.update({ where: { id: templateId }, data: { archivedAt: null } });
+  await writeAudit({
+    actorId: actor.id,
+    workspaceId: template.workspaceId,
+    entityType: "EntityTemplate",
+    entityId: template.id,
+    action: "UPDATE",
+    fieldPath: "archivedAt",
+    oldValue: { name: current.name, archivedAt: current.archivedAt },
+    newValue: { archivedAt: null },
+  });
+  revalidatePath("/templates");
+  revalidatePath(`/templates/${template.id}`);
+  return template;
+}
+
+export async function permanentlyDeleteTemplate(templateId: string) {
+  const actor = await requireGM();
+  const { template } = await requireTemplateGM(templateId, { archived: "archived" });
+  await prisma.$transaction(async (tx) => {
+    await tx.auditLog.create({
+      data: {
+        actorId: actor.id,
+        workspaceId: template.workspaceId,
+        entityType: "EntityTemplate",
+        entityId: template.id,
+        action: "DELETE",
+        oldValue: { name: template.name, kind: template.kind, archivedAt: template.archivedAt, permanent: true },
+      },
+    });
+    await tx.entityTemplate.delete({ where: { id: templateId } });
+  });
+  revalidatePath("/templates");
+}
+
 export async function updateTemplateNode(input: { templateId: string; nodeId: string; name?: string; parentId?: string | null; data?: unknown }) {
   const actor = await requireGM();
   const { template } = await requireTemplateGM(input.templateId);
