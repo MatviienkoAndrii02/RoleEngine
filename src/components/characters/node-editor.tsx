@@ -9,24 +9,32 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TableEditor } from "@/components/characters/table-editor";
 import { NodeIconPicker } from "@/components/characters/node-icons";
+import { NodePicker } from "@/components/characters/node-picker";
 import { ApplyTemplate } from "@/components/characters/apply-template";
 import { ApplyTemplateToTemplate } from "@/components/templates/apply-template-to-template";
 import type { TemplateSlotModel } from "@/domain/template-slots";
 import type { TemplatePickerOption } from "@/components/templates/template-filter-select";
 import { useI18n } from "@/i18n/client";
 
-const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
+export type LinkableCharacterOption = {
+  id: string;
+  name: string;
+};
+
+const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP", "LINK"];
 
 export function NodeEditor({
   characterId,
   templateId,
   nodes,
   templates = [],
+  linkableCharacters = [],
 }: {
   characterId?: string;
   templateId?: string;
   nodes: CharacterNodeModel[];
   templates?: Array<TemplatePickerOption & { slots?: TemplateSlotModel[] }>;
+  linkableCharacters?: LinkableCharacterOption[];
 }) {
   const router = useRouter();
   const { t } = useI18n();
@@ -109,6 +117,7 @@ export function NodeEditor({
         submit={submit}
         cancel={cancel}
         remove={active ? remove : undefined}
+        linkableCharacters={linkableCharacters}
       />
       {characterId && templates.length > 0 && (
         <div className="space-y-3 border-t pt-4">
@@ -126,7 +135,7 @@ export function NodeEditor({
   );
 }
 
-function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, submit, cancel, remove }: {
+function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, submit, cancel, remove, linkableCharacters }: {
   nodes: CharacterNodeModel[];
   active: CharacterNodeModel | null;
   selectedParentId: string | null | undefined;
@@ -136,6 +145,7 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
   submit: (data: FormData) => void;
   cancel: () => void;
   remove?: () => void;
+  linkableCharacters: LinkableCharacterOption[];
 }) {
   const { t } = useI18n();
   const initialType = active?.type ?? "NUMBER";
@@ -150,11 +160,15 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
     <form action={submit} className="space-y-4">
       <FormField label={t("common.name")} name="name" required defaultValue={active?.name} />
       <div className="space-y-2">
-        <label className="text-sm font-medium" htmlFor="parentId">{t("node.parent")}</label>
-        <select id="parentId" name="parentId" defaultValue={active?.parentId ?? selectedParentId ?? ""} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
-          <option value="">{rootLabel}</option>
-          {parentOptions.map((node) => <option key={node.id} value={node.id}>{getNodeBreadcrumb(node, nodes)}</option>)}
-        </select>
+        <div className="text-sm font-medium">{t("node.parent")}</div>
+        <NodePicker
+          name="parentId"
+          nodes={parentOptions}
+          defaultValue={active?.parentId ?? selectedParentId ?? ""}
+          includeRoot
+          rootLabel={rootLabel}
+          placeholder={t("node.parent")}
+        />
       </div>
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="node-type">{t("common.type")}</label>
@@ -178,7 +192,13 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
         </label>
       </div>
       <NodeIconPicker key={`icon-${type}-${active?.id ?? "new"}`} type={type} defaultValue={active?.data.icon} />
-      <DataFields key={`data-${type}-${active?.id ?? "new"}`} type={type} data={active?.type === type ? active.data : undefined} />
+      <DataFields
+        key={`data-${type}-${active?.id ?? "new"}`}
+        type={type}
+        data={active?.type === type ? active.data : undefined}
+        nodes={nodes.filter((node) => node.id !== active?.id)}
+        linkableCharacters={linkableCharacters}
+      />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex w-full flex-wrap gap-2">
         <Button type="submit" disabled={pending}><Save className="h-4 w-4" />{pending ? t("common.saving") : t("common.save")}</Button>
@@ -189,13 +209,55 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
   );
 }
 
-function DataFields({ type, data }: { type: NodeType; data?: NodeData }) {
+function DataFields({
+  type,
+  data,
+  nodes,
+  linkableCharacters,
+}: {
+  type: NodeType;
+  data?: NodeData;
+  nodes: CharacterNodeModel[];
+  linkableCharacters: LinkableCharacterOption[];
+}) {
   const { t } = useI18n();
   const value = data as Record<string, unknown> | undefined;
   if (type === "NUMBER") return <><NumberField name="value" label={t("common.value")} value={value?.value ?? 0} /><div className="grid grid-cols-2 gap-3"><NumberField name="min" label={t("node.minimum")} value={value?.min ?? ""} /><NumberField name="max" label={t("node.maximum")} value={value?.max ?? ""} /></div><label className="flex items-center gap-2 text-sm"><input name="allowNegative" type="checkbox" defaultChecked={Boolean(value?.allowNegative)} />{t("node.allowNegative")}</label></>;
   if (type === "BAR") return <div className="grid grid-cols-3 gap-3"><NumberField name="current" label={t("node.current")} value={value?.current ?? 0} /><NumberField name="min" label={t("node.minimum")} value={value?.min ?? ""} /><NumberField name="max" label={t("node.maximum")} value={value?.max ?? 10} /></div>;
   if (type === "TEXT") return <div className="space-y-2"><label className="text-sm font-medium" htmlFor="text">{t("node.text")}</label><textarea id="text" name="text" defaultValue={String(value?.text ?? "")} className="min-h-32 w-full resize-y rounded-md border border-input bg-background p-3 text-sm" /></div>;
   if (type === "TABLE") return <TableEditor data={value} />;
+  if (type === "LINK") {
+    const targetKind = value?.targetKind === "character" ? "character" : "node";
+    return (
+      <div className="space-y-3 rounded-md border p-3">
+        <div className="space-y-2">
+          <label className="text-sm font-medium" htmlFor="linkTargetKind">{t("node.linkTargetType")}</label>
+          <select id="linkTargetKind" name="linkTargetKind" defaultValue={targetKind} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+            <option value="node">{t("node.linkTargetNode")}</option>
+            {linkableCharacters.length > 0 && <option value="character">{t("node.linkTargetCharacter")}</option>}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <div className="text-sm font-medium">{t("node.linkTargetNode")}</div>
+          <NodePicker
+            name="targetNodeId"
+            nodes={nodes}
+            defaultValue={typeof value?.targetNodeId === "string" ? value.targetNodeId : ""}
+            placeholder={t("effect.selectNode")}
+          />
+        </div>
+        {linkableCharacters.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="targetCharacterId">{t("node.linkTargetCharacter")}</label>
+            <select id="targetCharacterId" name="targetCharacterId" defaultValue={typeof value?.targetCharacterId === "string" ? value.targetCharacterId : ""} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <option value="">{t("node.linkChooseCharacter")}</option>
+              {linkableCharacters.map((character) => <option key={character.id} value={character.id}>{character.name}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+    );
+  }
   if (type === "CONTAINER") return null;
   return <FormField label={t("node.groupColor")} name="color" defaultValue={String(value?.color ?? "teal")} />;
 }
@@ -227,6 +289,11 @@ function readNodeData(type: NodeType, form: FormData): NodeData {
   if (type === "TABLE") {
     const parsed = readTableData(String(form.get("tableData") ?? ""));
     return { ...common, columns: parsed.columns, rows: parsed.rows };
+  }
+  if (type === "LINK") {
+    const targetKind = String(form.get("linkTargetKind") ?? "node") === "character" ? "character" : "node";
+    if (targetKind === "character") return { ...common, targetKind, targetCharacterId: String(form.get("targetCharacterId") ?? "") };
+    return { ...common, targetKind, targetNodeId: String(form.get("targetNodeId") ?? "") };
   }
   if (type === "CONTAINER") return common;
   return { ...common, color: String(form.get("color") ?? "teal") };

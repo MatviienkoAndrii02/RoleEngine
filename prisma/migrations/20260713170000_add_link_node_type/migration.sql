@@ -1,0 +1,1 @@
+ALTER TYPE "NodeType" ADD VALUE 'LINK';

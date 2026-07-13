@@ -17,6 +17,7 @@ import { AuditList } from "@/components/history/audit-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canReadCharacter } from "@/server/authz";
 import { requirePageUser } from "@/server/page-auth";
+import { resolveCharacterNodeLinks } from "@/server/node-links";
 import { getTranslator } from "@/i18n/server";
 import { parseCharacterNodeModels, parseEffectDefinitions, type PersistedJsonDiagnostic } from "@/server/read-models";
 import { collectSubtreeIds } from "@/domain/tree";
@@ -83,6 +84,11 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
   });
   const visibleDisplayNodes = canEdit ? displayNodes : removePlayerHiddenSubtrees(displayNodes);
   const visibleNodeIds = new Set(visibleDisplayNodes.map((node) => node.id));
+  const linkedDisplayNodes = await resolveCharacterNodeLinks({
+    nodes: visibleDisplayNodes,
+    userId: user.id,
+    missingLabel: t("node.linkUnavailable"),
+  });
   const visibleNodes = nodes.filter((node) => visibleNodeIds.has(node.id));
   const visibleChangedCalculations = canEdit
     ? changedCalculations
@@ -109,6 +115,13 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
         where: { workspaceMemberships: { some: { workspaceId: data.workspaceId, role: "PLAYER" } } },
         select: { id: true, name: true, email: true },
         orderBy: [{ name: "asc" }, { email: "asc" }]
+      })
+    : [];
+  const linkableCharacters = canEdit
+    ? await prisma.character.findMany({
+        where: { workspaceId: data.workspaceId, id: { not: data.id }, archivedAt: null },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
       })
     : [];
   const archivedNodeRecords = canEdit
@@ -150,7 +163,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
             <CardTitle>{t("character.nodeTree")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <CharacterTree nodes={buildNodeTree(visibleDisplayNodes)} searchable />
+            <CharacterTree nodes={buildNodeTree(linkedDisplayNodes)} searchable />
           </CardContent>
         </Card>
         <div className="space-y-6">
@@ -170,7 +183,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
           )}
           {canEdit && (
             <SidebarSection id="node-editor" title={t("character.nodeEditor")}>
-              <NodeEditor characterId={characterId} nodes={nodes} templates={templateOptions} />
+              <NodeEditor characterId={characterId} nodes={nodes} templates={templateOptions} linkableCharacters={linkableCharacters} />
             </SidebarSection>
           )}
           {canEdit && (

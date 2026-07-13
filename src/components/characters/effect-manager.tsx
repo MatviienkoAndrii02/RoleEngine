@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NodeIconPicker } from "@/components/characters/node-icons";
+import { NodePicker } from "@/components/characters/node-picker";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 
@@ -146,6 +147,9 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   const numericSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"));
   const containers = nodes.filter((node) => node.type === "CONTAINER" || node.type === "GROUP");
   const containerSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "CONTAINER" || type === "GROUP"));
+  const numericSlotOptions = numericSlots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
+  const containerSlotOptions = containerSlots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
+  const allSlotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
   const isNumeric = numericOperations.includes(operation);
   const isPatch = operation === "PATCH_NODE_PROPS";
   const selectedTargetValue = parseTemplateSelectValue(selectedTargetId);
@@ -156,6 +160,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   const [numericField, setNumericField] = useState(initialNumericField(effect, numericFields));
   const [patchField, setPatchField] = useState(initialPatchField(effect, patchFields));
   const selectedPatchField = patchFields.find((field) => field.field === patchField) ?? patchFields[0] ?? null;
+  const actualSelectedTargetId = selectedTargetId || (effect.target.kind === "root" ? "__ROOT__" : "");
 
   useEffect(() => {
     if (!numericFields.length) {
@@ -182,7 +187,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
       enabled: formData.get("enabled") === "on",
       priority: Number(formData.get("priority")),
       operation,
-      targetNodeId: selectedTargetId === "__ROOT__" ? null : selectedTargetId,
+      targetNodeId: actualSelectedTargetId === "__ROOT__" ? null : actualSelectedTargetId,
       condition,
     };
     if (isNumeric) {
@@ -212,7 +217,21 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
       </div>
       <label className="flex items-center gap-2 text-sm"><input name="enabled" type="checkbox" defaultChecked={effect.enabled} />{t("effect.enabled")}</label>
       <Labeled label={t("effect.operation")}><select value={operation} onChange={(event) => setOperation(event.target.value as Operation)} className={selectClass}>{[...numericOperations, ...structuralOperations].map((item) => <option key={item} value={item}>{operationLabel(item, t)}</option>)}</select></Labeled>
-      <Labeled label={t("effect.target")}><select name="targetNodeId" required value={selectedTargetId || (effect.target.kind === "root" ? "__ROOT__" : "")} onChange={(event) => setSelectedTargetId(event.target.value)} className={selectClass}><option value="">{t("effect.selectTarget")}</option>{!isNumeric && !isPatch && <option value="__ROOT__">{rootLabel}</option>}{(isNumeric ? numericNodes : isPatch ? nodes : containers).map((node) => <option key={node.id} value={node.id}>{node.name}</option>)}{(isNumeric ? numericSlots : isPatch ? slots : containerSlots).map((slot) => <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>)}</select></Labeled>
+      <Labeled label={t("effect.target")}>
+        <NodePicker
+          name="targetNodeId"
+          nodes={isNumeric ? numericNodes : isPatch ? nodes : containers}
+          value={actualSelectedTargetId}
+          onChange={setSelectedTargetId}
+          extraOptions={isNumeric ? numericSlotOptions : isPatch ? allSlotOptions : containerSlotOptions}
+          allowedTypes={isNumeric ? ["NUMBER", "BAR"] : isPatch ? undefined : ["CONTAINER", "GROUP"]}
+          includeRoot={!isNumeric && !isPatch}
+          rootValue="__ROOT__"
+          rootLabel={rootLabel}
+          required
+          placeholder={t("effect.selectTarget")}
+        />
+      </Labeled>
       {isNumeric && <Labeled label={t("effect.numericField")}><select name="numericField" required value={numericField} onChange={(event) => setNumericField(event.target.value)} className={selectClass}><option value="">{t("effect.numericField")}</option>{numericFields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}</select></Labeled>}
 
       {isNumeric && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} />}
@@ -347,7 +366,7 @@ function StaticPatchField({ field, patch, targetType }: { field: PatchFieldDefin
 
 function Field({ label, ...props }: React.ComponentProps<typeof Input> & { label: string }) { return <Labeled label={label}><Input {...props} /></Labeled>; }
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block space-y-2 text-sm font-medium"><span>{label}</span>{children}</label>; }
-function NodeSelect({ label, name, nodes, slots = [], defaultValue, compact = false }: { label: string; name: string; nodes: CharacterNodeModel[]; slots?: TemplateSlotModel[]; defaultValue: string; compact?: boolean }) { const { t } = useI18n(); return <Labeled label={label}><select name={name} required defaultValue={defaultValue} className={selectClass}><option value="">{t("effect.selectNode")}</option>{nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>)}{slots.map((slot) => <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>)}</select>{compact ? null : null}</Labeled>; }
+function NodeSelect({ label, name, nodes, slots = [], defaultValue, compact = false }: { label: string; name: string; nodes: CharacterNodeModel[]; slots?: TemplateSlotModel[]; defaultValue: string; compact?: boolean }) { const { t } = useI18n(); const slotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) })); return <Labeled label={label}><NodePicker name={name} nodes={nodes} extraOptions={slotOptions} defaultValue={defaultValue} required placeholder={t("effect.selectNode")} />{compact ? null : null}</Labeled>; }
 
 function targetNodeId(effect: EffectDefinition) { if (effect.target.kind === "node") return effect.target.nodeId; if (effect.target.kind === "templateSlot") return `slot:${effect.target.slotId}`; if (effect.target.kind === "parent") return effect.target.parentNodeId; return null; }
 function initialPatchField(effect: EffectDefinition, fields: PatchFieldDefinition[]) {

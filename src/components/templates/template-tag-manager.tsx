@@ -28,7 +28,10 @@ export function TemplateTagManager({
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const filteredTags = allTags.filter((tag) => tag.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const filteredTags = allTags.filter((tag) => (
+    !assignedIds.has(tag.id) &&
+    tag.name.toLowerCase().includes(query.trim().toLowerCase())
+  ));
 
   async function request(url: string, options: RequestInit, fallbackKey: Parameters<typeof t>[0]) {
     setPending(url);

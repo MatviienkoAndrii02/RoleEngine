@@ -20,6 +20,7 @@ enum NodeType {
   TABLE
   CONTAINER
   GROUP
+  LINK
 }
 
 enum TemplateKind {

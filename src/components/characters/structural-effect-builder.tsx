@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
 import { NodeIconPicker } from "@/components/characters/node-icons";
+import { NodePicker } from "@/components/characters/node-picker";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 
@@ -38,6 +39,8 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   const containers = nodes.filter((node) => node.type === "CONTAINER" || node.type === "GROUP");
   const containerSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "CONTAINER" || type === "GROUP"));
   const patchSlots = slots;
+  const containerSlotOptions = containerSlots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
+  const patchSlotOptions = patchSlots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
   const selectedTarget = parseTemplateSelectValue(targetNodeId);
   const patchTarget = selectedTarget.kind === "node" ? nodes.find((node) => node.id === selectedTarget.id) ?? null : null;
   const patchSlot = selectedTarget.kind === "slot" ? patchSlots.find((slot) => slot.id === selectedTarget.id) ?? null : null;
@@ -113,16 +116,19 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
         <option value="CREATE_GROUP">{t("effect.createGroup")}</option>
         <option value="PATCH_NODE_PROPS">{t("effect.patchNode")}</option>
       </select>
-      <select name="targetNodeId" required value={targetNodeId} onChange={(event) => setTargetNodeId(event.target.value)} className={selectClass}>
-        <option value="">{operation === "PATCH_NODE_PROPS" ? t("effect.patchTarget") : t("effect.place")}</option>
-        {operation !== "PATCH_NODE_PROPS" && <option value="__ROOT__">{rootLabel}</option>}
-        {(operation === "PATCH_NODE_PROPS" ? nodes : containers).map((node) => (
-          <option key={node.id} value={node.id}>{node.name}</option>
-        ))}
-        {(operation === "PATCH_NODE_PROPS" ? patchSlots : containerSlots).map((slot) => (
-          <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>
-        ))}
-      </select>
+      <NodePicker
+        name="targetNodeId"
+        nodes={operation === "PATCH_NODE_PROPS" ? nodes : containers}
+        value={targetNodeId}
+        onChange={setTargetNodeId}
+        extraOptions={operation === "PATCH_NODE_PROPS" ? patchSlotOptions : containerSlotOptions}
+        allowedTypes={operation === "PATCH_NODE_PROPS" ? undefined : ["CONTAINER", "GROUP"]}
+        includeRoot={operation !== "PATCH_NODE_PROPS"}
+        rootValue="__ROOT__"
+        rootLabel={rootLabel}
+        required
+        placeholder={operation === "PATCH_NODE_PROPS" ? t("effect.patchTarget") : t("effect.place")}
+      />
 
       {operation !== "PATCH_NODE_PROPS" ? (
         <>
@@ -234,10 +240,7 @@ function StaticPatchField({ field, targetType }: { field: PatchFieldDefinition; 
 
 function SourceFields({ nodes, slots, kind, setKind }: { nodes: CharacterNodeModel[]; slots: TemplateSlotModel[]; kind: string; setKind: (kind: string) => void }) {
   const { t } = useI18n();
-  const options = [
-    ...nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>),
-    ...slots.map((slot) => <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>),
-  ];
+  const slotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
   return (
     <div className="space-y-2">
       <select value={kind} onChange={(event) => setKind(event.target.value)} className={selectClass}>
@@ -248,10 +251,10 @@ function SourceFields({ nodes, slots, kind, setKind }: { nodes: CharacterNodeMod
       {kind === "number" ? (
         <Input name="sourceValue" type="number" step="any" required placeholder={t("common.value")} />
       ) : kind === "node" ? (
-        <select name="sourceNodeId" required className={selectClass}><option value="">{t("effect.selectNode")}</option>{options}</select>
+        <NodePicker name="sourceNodeId" nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} />
       ) : (
-        <div className="grid grid-cols-[1fr_auto_100px] gap-2">
-          <select name="formulaNodeId" required className={selectClass}><option value="">{t("effect.selectNode")}</option>{options}</select>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_100px] gap-2">
+          <NodePicker name="formulaNodeId" nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} />
           <select name="formulaOperator" className={selectClass}><option value="add">+</option><option value="subtract">-</option><option value="multiply">x</option><option value="divide">/</option></select>
           <Input name="formulaValue" type="number" step="any" required defaultValue={10} />
         </div>

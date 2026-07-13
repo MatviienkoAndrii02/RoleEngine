@@ -7,6 +7,7 @@ import { parseTemplateTagColor } from "@/domain/template-tags";
 import { prisma } from "@/lib/prisma";
 import { requirePageGM } from "@/server/page-auth";
 import { requireTemplateGM } from "@/server/authz";
+import { resolveLocalNodeLinks } from "@/server/node-links";
 import { parseEffectDefinitions, parseTemplateNodeModels, type PersistedJsonDiagnostic } from "@/server/read-models";
 import { CharacterTree } from "@/components/characters/character-tree";
 import { NodeEditor } from "@/components/characters/node-editor";
@@ -48,6 +49,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ templ
   const parsedEffects = parseEffectDefinitions(template.effects);
   const diagnostics = [...parsedNodes.diagnostics, ...parsedEffects.diagnostics];
   const nodes = parsedNodes.nodes;
+  const linkedNodes = resolveLocalNodeLinks(nodes, t("node.linkUnavailable"));
   const effects = parsedEffects.effects;
   const slots = template.slots.map((slot) => ({ ...slot, acceptedTypes: parseAcceptedNodeTypes(slot.acceptedTypes) }));
   const assignedTags = template.tags.map((item) => ({ id: item.tag.id, name: item.tag.name, color: parseTemplateTagColor(item.tag.color) }));
@@ -74,7 +76,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ templ
           <CardTitle>{t("template.structure")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <CharacterTree nodes={buildNodeTree(nodes)} editorSectionId="template-node-editor" />
+          <CharacterTree nodes={buildNodeTree(linkedNodes)} editorSectionId="template-node-editor" />
         </CardContent>
       </Card>
       <div className="space-y-6">

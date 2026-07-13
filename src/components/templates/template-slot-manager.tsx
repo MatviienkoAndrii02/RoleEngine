@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 
-const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
+const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP", "LINK"];
 const directions: TemplateSlotDirection[] = ["INPUT", "OUTPUT", "BIDIRECTIONAL"];
 
 export function TemplateSlotManager({ templateId, slots }: { templateId: string; slots: TemplateSlotModel[] }) {

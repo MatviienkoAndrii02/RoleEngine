@@ -1,6 +1,6 @@
 "use server";
 
-import type { Prisma, TemplateKind } from "@prisma/client";
+import type { NodeType, Prisma, TemplateKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireGM, requirePrimaryWritableWorkspace, requireTemplateGM } from "@/server/authz";
@@ -58,7 +58,7 @@ export async function createTemplate(input: {
 export async function createTemplateNode(input: {
   templateId: string;
   parentId?: string | null;
-  type: "NUMBER" | "BAR" | "TEXT" | "TABLE" | "CONTAINER" | "GROUP";
+  type: NodeType;
   name: string;
   data: Prisma.InputJsonValue;
 }) {
@@ -376,7 +376,7 @@ export async function createTemplateSlot(input: {
   label: string;
   description?: string;
   direction: "INPUT" | "OUTPUT" | "BIDIRECTIONAL";
-  acceptedTypes: Array<"NUMBER" | "BAR" | "TEXT" | "TABLE" | "CONTAINER" | "GROUP">;
+  acceptedTypes: NodeType[];
   required?: boolean;
 }) {
   const actor = await requireGM();
@@ -411,7 +411,7 @@ export async function updateTemplateSlot(input: {
   label?: string;
   description?: string | null;
   direction?: "INPUT" | "OUTPUT" | "BIDIRECTIONAL";
-  acceptedTypes?: Array<"NUMBER" | "BAR" | "TEXT" | "TABLE" | "CONTAINER" | "GROUP">;
+  acceptedTypes?: NodeType[];
   required?: boolean;
 }) {
   const actor = await requireGM();

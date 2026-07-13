@@ -8,6 +8,7 @@ import { getNumericPatchFields, type PatchFieldDefinition } from "@/domain/node-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
+import { NodePicker } from "@/components/characters/node-picker";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 
@@ -30,10 +31,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
   const targetSlot = selectedTarget.kind === "slot" ? numericSlots.find((slot) => slot.id === selectedTarget.id) ?? null : null;
   const targetFields = targetNode ? getNumericPatchFields(targetNode.type) : [];
   const targetFieldsForSelection = targetSlot ? commonNumericFields : targetFields;
-  const options = [
-    ...numeric.map((n) => <option key={n.id} value={n.id}>{n.name}</option>),
-    ...numericSlots.map((slot) => <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>),
-  ];
+  const slotOptions = numericSlots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
 
   async function submit(data: FormData) {
     setPending(true); setError(null);
@@ -46,16 +44,22 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
   return (
     <form action={submit} className="space-y-3">
       <Input name="name" required placeholder={t("effect.name")} />
-      <select name="targetNodeId" required value={targetNodeId} onChange={(event) => setTargetNodeId(event.target.value)} className={selectClass}>
-        <option value="">{t("effect.selectTarget")}</option>
-        {options}
-      </select>
+      <NodePicker
+        name="targetNodeId"
+        nodes={numeric}
+        value={targetNodeId}
+        onChange={setTargetNodeId}
+        extraOptions={slotOptions}
+        allowedTypes={["NUMBER", "BAR"]}
+        required
+        placeholder={t("effect.selectTarget")}
+      />
       <Select name="numericField" placeholder={t("effect.numericField")}>
         {targetFieldsForSelection.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}
       </Select>
       <Select name="operation"><option value="ADD">{t("effect.add")}</option><option value="SUBTRACT">{t("effect.subtract")}</option><option value="MULTIPLY">{t("effect.multiply")}</option><option value="PERCENT_BONUS">{t("effect.percentBonus")}</option><option value="SET_BAR_MAX">{t("effect.setNumericField")}</option></Select>
       <select value={sourceKind} onChange={(e) => setSourceKind(e.target.value)} className={selectClass}><option value="number">{t("effect.sourceNumber")}</option><option value="node">{t("effect.sourceNode")}</option><option value="formula">{t("effect.sourceFormula")}</option></select>
-      {sourceKind === "number" ? <Input name="sourceValue" type="number" step="any" required placeholder={t("common.value")} /> : sourceKind === "node" ? <Select name="sourceNodeId">{options}</Select> : <div className="grid grid-cols-[1fr_auto_100px] gap-2"><Select name="formulaNodeId">{options}</Select><Select name="formulaOperator"><option value="add">+</option><option value="subtract">-</option><option value="multiply">x</option><option value="divide">/</option></Select><Input name="formulaValue" type="number" step="any" required /></div>}
+      {sourceKind === "number" ? <Input name="sourceValue" type="number" step="any" required placeholder={t("common.value")} /> : sourceKind === "node" ? <NodePicker name="sourceNodeId" nodes={numeric} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} /> : <div className="grid grid-cols-[minmax(0,1fr)_auto_100px] gap-2"><NodePicker name="formulaNodeId" nodes={numeric} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} /><Select name="formulaOperator"><option value="add">+</option><option value="subtract">-</option><option value="multiply">x</option><option value="divide">/</option></Select><Input name="formulaValue" type="number" step="any" required /></div>}
       <EffectConditionBuilder nodes={numeric} slots={numericSlots} />
       {error && <p className="text-sm text-destructive">{error}</p>}<Button disabled={pending}><Plus className="h-4 w-4" />{pending ? t("effect.checking") : t("effect.addEffect")}</Button>
     </form>

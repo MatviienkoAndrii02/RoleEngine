@@ -24,6 +24,13 @@ const described = <T extends z.ZodRawShape>(shape: T) =>
     hiddenFromPlayer: z.boolean().optional(),
   }).strict();
 
+const commonNodePresentationSchema = z.object({
+  description: descriptionSchema,
+  icon: iconSchema,
+  collapsedByDefault: z.boolean().optional(),
+  hiddenFromPlayer: z.boolean().optional(),
+}).strict();
+
 export const numberNodeDataSchema = described({
   value: finiteNumberSchema,
   min: finiteNumberSchema.nullable().optional(),
@@ -87,8 +94,18 @@ export const containerNodeDataSchema = described({});
 export const groupNodeDataSchema = described({
   color: z.string().trim().max(100).optional(),
 });
+export const linkNodeDataSchema = z.union([
+  commonNodePresentationSchema.extend({
+    targetKind: z.literal("node"),
+    targetNodeId: idSchema,
+  }).strict(),
+  commonNodePresentationSchema.extend({
+    targetKind: z.literal("character"),
+    targetCharacterId: idSchema,
+  }).strict(),
+]);
 
-export const nodeTypeSchema = z.enum(["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"]);
+export const nodeTypeSchema = z.enum(["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP", "LINK"]);
 
 const nodeDataSchemas = {
   NUMBER: numberNodeDataSchema,
@@ -97,6 +114,7 @@ const nodeDataSchemas = {
   TABLE: tableNodeDataSchema,
   CONTAINER: containerNodeDataSchema,
   GROUP: groupNodeDataSchema,
+  LINK: linkNodeDataSchema,
 } satisfies Record<NodeType, z.ZodType>;
 
 export function parseNodeData(type: NodeType, value: unknown): NodeData {
@@ -123,6 +141,7 @@ export const createNodeCommandSchema = z.discriminatedUnion("type", [
   z.object({ parentId: idSchema.nullable().optional(), type: z.literal("TABLE"), name: nameSchema, data: tableNodeDataSchema }).strict(),
   z.object({ parentId: idSchema.nullable().optional(), type: z.literal("CONTAINER"), name: nameSchema, data: containerNodeDataSchema }).strict(),
   z.object({ parentId: idSchema.nullable().optional(), type: z.literal("GROUP"), name: nameSchema, data: groupNodeDataSchema }).strict(),
+  z.object({ parentId: idSchema.nullable().optional(), type: z.literal("LINK"), name: nameSchema, data: linkNodeDataSchema }).strict(),
 ]);
 
 export const updateNodeCommandSchema = z.object({
@@ -320,7 +339,7 @@ export const createTemplateSlotCommandSchema = z.object({
   label: nameSchema,
   description: descriptionSchema,
   direction: templateSlotDirectionSchema,
-  acceptedTypes: z.array(nodeTypeSchema).min(1).max(6),
+  acceptedTypes: z.array(nodeTypeSchema).min(1).max(7),
   required: z.boolean().optional(),
 }).strict();
 
@@ -329,7 +348,7 @@ export const updateTemplateSlotCommandSchema = z.object({
   label: nameSchema.optional(),
   description: descriptionSchema.nullable().optional(),
   direction: templateSlotDirectionSchema.optional(),
-  acceptedTypes: z.array(nodeTypeSchema).min(1).max(6).optional(),
+  acceptedTypes: z.array(nodeTypeSchema).min(1).max(7).optional(),
   required: z.boolean().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, { message: "At least one field must be provided" });
 

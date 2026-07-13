@@ -5,6 +5,7 @@ import type { EffectCondition } from "@/domain/effects";
 import type { CharacterNodeModel } from "@/domain/nodes";
 import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Input } from "@/components/ui/input";
+import { NodePicker } from "@/components/characters/node-picker";
 import { useI18n } from "@/i18n/client";
 
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
@@ -14,10 +15,7 @@ export function EffectConditionBuilder({ nodes, slots = [], prefix = "condition"
   const [join, setJoin] = useState("single");
   const [firstKind, setFirstKind] = useState("always");
   const [secondKind, setSecondKind] = useState("exists");
-  const options = [
-    ...nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>),
-    ...slots.map((slot) => <option key={slot.id} value={`slot:${slot.id}`}>{t("templateSlot.option", { label: slot.label })}</option>),
-  ];
+  const slotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
 
   return (
     <div className="space-y-2">
@@ -30,12 +28,12 @@ export function EffectConditionBuilder({ nodes, slots = [], prefix = "condition"
         </select>
         <ConditionKind name={`${prefix}FirstKind`} value={firstKind} onChange={setFirstKind} />
       </div>
-      <ConditionFields kind={firstKind} prefix={`${prefix}First`} options={options} />
+      <ConditionFields kind={firstKind} prefix={`${prefix}First`} nodes={nodes} slotOptions={slotOptions} />
       {(join === "and" || join === "or") && (
         <div className="space-y-2 rounded-md border border-dashed p-2">
           <p className="text-xs text-muted-foreground">{t("effect.conditionAdditional")}</p>
           <ConditionKind name={`${prefix}SecondKind`} value={secondKind} onChange={setSecondKind} />
-          <ConditionFields kind={secondKind} prefix={`${prefix}Second`} options={options} />
+          <ConditionFields kind={secondKind} prefix={`${prefix}Second`} nodes={nodes} slotOptions={slotOptions} />
         </div>
       )}
     </div>
@@ -68,20 +66,19 @@ function ConditionKind({ name, value, onChange }: { name: string; value: string;
 function ConditionFields({
   kind,
   prefix,
-  options,
+  nodes,
+  slotOptions,
 }: {
   kind: string;
   prefix: string;
-  options: React.ReactNode;
+  nodes: CharacterNodeModel[];
+  slotOptions: Array<{ value: string; label: string }>;
 }) {
   const { t } = useI18n();
   if (kind === "always") return null;
   return (
     <div className="grid grid-cols-2 gap-2">
-      <select name={`${prefix}NodeId`} className={selectClass}>
-        <option value="">{t("effect.selectNode")}</option>
-        {options}
-      </select>
+      <NodePicker name={`${prefix}NodeId`} nodes={nodes} extraOptions={slotOptions} placeholder={t("effect.selectNode")} />
       {kind !== "exists" && <Input name={`${prefix}Value`} type="number" step="any" required placeholder={t("common.value")} />}
     </div>
   );

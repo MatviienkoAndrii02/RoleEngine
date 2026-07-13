@@ -1,4 +1,4 @@
-export type NodeType = "NUMBER" | "BAR" | "TEXT" | "TABLE" | "CONTAINER" | "GROUP";
+export type NodeType = "NUMBER" | "BAR" | "TEXT" | "TABLE" | "CONTAINER" | "GROUP" | "LINK";
 
 export const NODE_ICON_NAMES = [
   "circle",
@@ -21,6 +21,7 @@ export const NODE_ICON_NAMES = [
   "skull",
   "cog",
   "star",
+  "link",
 ] as const;
 
 export type NodeIconName = typeof NODE_ICON_NAMES[number];
@@ -59,6 +60,39 @@ export type GroupNodeData = {
   color?: string;
 };
 
+export type LinkNodeData =
+  | {
+      targetKind: "node";
+      targetNodeId: string;
+      targetCharacterId?: never;
+    }
+  | {
+      targetKind: "character";
+      targetCharacterId: string;
+      targetNodeId?: never;
+    };
+
+export type ResolvedNodeLink =
+  | {
+      kind: "node";
+      nodeId: string;
+      label: string;
+      ancestorIds: string[];
+      available: true;
+    }
+  | {
+      kind: "character";
+      characterId: string;
+      label: string;
+      href: string;
+      available: true;
+    }
+  | {
+      kind: "missing";
+      label: string;
+      available: false;
+    };
+
 type CommonNodePresentation = {
   description?: string;
   icon?: NodeIconName;
@@ -73,6 +107,7 @@ export type NodeData = (
   | TableNodeData
   | ContainerNodeData
   | GroupNodeData
+  | LinkNodeData
 ) & CommonNodePresentation;
 
 export type CharacterNodeModel = {
@@ -84,6 +119,7 @@ export type CharacterNodeModel = {
   order: number;
   data: NodeData;
   computed?: Record<string, unknown>;
+  resolvedLink?: ResolvedNodeLink;
 };
 
 export type NodeTreeItem = CharacterNodeModel & {

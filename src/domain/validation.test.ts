@@ -50,6 +50,13 @@ test("validates optional node icons", () => {
   assert.throws(() => parseNodeData("BAR", { current: 1, min: 5, max: 3 }));
 });
 
+test("validates link node targets", () => {
+  assert.doesNotThrow(() => parseNodeData("LINK", { targetKind: "node", targetNodeId: "node_1", icon: "link" }));
+  assert.doesNotThrow(() => parseNodeData("LINK", { targetKind: "character", targetCharacterId: "character_1" }));
+  assert.throws(() => parseNodeData("LINK", { targetKind: "node", targetCharacterId: "character_1" }));
+  assert.throws(() => parseNodeData("LINK", { targetKind: "character", targetNodeId: "node_1" }));
+});
+
 test("validates table columns and typed cells", () => {
   assert.doesNotThrow(() => parseNodeData("TABLE", {
     columns: [

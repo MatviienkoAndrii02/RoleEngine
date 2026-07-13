@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CopyPlus } from "lucide-react";
 import type { CharacterNodeModel } from "@/domain/nodes";
 import { Button } from "@/components/ui/button";
+import { NodePicker } from "@/components/characters/node-picker";
 import { TemplateFilterSelect, type TemplatePickerOption } from "@/components/templates/template-filter-select";
 import { useI18n } from "@/i18n/client";
 
@@ -54,19 +55,15 @@ export function ApplyTemplateToTemplate({
   return (
     <form action={submit} className="space-y-3">
       <TemplateFilterSelect name="sourceTemplateId" required value={sourceTemplateId} onChange={setSourceTemplateId} templates={templates} emptyLabel={t("template.choose")} />
-      <select
+      <NodePicker
         name="parentNodeId"
+        nodes={nodes}
         value={parentNodeId}
-        onChange={(event) => setParentNodeId(event.target.value)}
-        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-      >
-        <option value="">{t("common.rootTemplate")}</option>
-        {nodes.map((node) => (
-          <option key={node.id} value={node.id}>
-            {breadcrumb(node, nodes)}
-          </option>
-        ))}
-      </select>
+        onChange={setParentNodeId}
+        includeRoot
+        rootLabel={t("common.rootTemplate")}
+        placeholder={t("node.parent")}
+      />
       <Button type="submit" disabled={pending || templates.length === 0 || !sourceTemplateId}>
         <CopyPlus className="h-4 w-4" />
         {pending ? t("template.copying") : t("template.addCopy")}
@@ -74,18 +71,4 @@ export function ApplyTemplateToTemplate({
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
     </form>
   );
-}
-
-function breadcrumb(node: CharacterNodeModel, nodes: CharacterNodeModel[]) {
-  const names = [node.name];
-  let parentId = node.parentId;
-  const visited = new Set<string>();
-  while (parentId && !visited.has(parentId)) {
-    visited.add(parentId);
-    const parent = nodes.find((candidate) => candidate.id === parentId);
-    if (!parent) break;
-    names.unshift(parent.name);
-    parentId = parent.parentId;
-  }
-  return names.join(" / ");
 }

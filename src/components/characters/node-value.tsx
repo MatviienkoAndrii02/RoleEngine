@@ -1,7 +1,8 @@
 "use client";
 
-import { BookOpen, ChevronDown, ChevronUp, Table2 } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronUp, ExternalLink, LinkIcon, Table2 } from "lucide-react";
 import type { CharacterNodeModel } from "@/domain/nodes";
+import { useCharacterUiStore } from "@/store/character-ui-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n/client";
@@ -22,6 +23,7 @@ export function NodeValue({
   onToggleTable?: () => void;
 }) {
   const { t } = useI18n();
+  const revealNode = useCharacterUiStore((state) => state.revealNode);
 
   if (node.type === "NUMBER" && "value" in node.data) {
     return <span className="tabular-nums">{formatNodeNumber(node.data.value)}</span>;
@@ -81,6 +83,38 @@ export function NodeValue({
         <Table2 className="h-4 w-4" />
         <span className="hidden sm:inline">{rows} x {columns}</span>
         {tableExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </Button>
+    );
+  }
+
+  if (node.type === "LINK" && node.resolvedLink) {
+    const link = node.resolvedLink;
+    if (!link.available) {
+      return <span className="text-sm text-muted-foreground">{link.label}</span>;
+    }
+    if (link.kind === "character") {
+      return (
+        <Button type="button" size="sm" variant="ghost" asChild onClick={(event) => event.stopPropagation()}>
+          <a href={link.href} target="_blank" rel="noreferrer">
+            <ExternalLink className="h-4 w-4" />
+            <span className="hidden sm:inline">{t("node.goTo")}</span>
+          </a>
+        </Button>
+      );
+    }
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={(event) => {
+          event.stopPropagation();
+          revealNode(link.nodeId, link.ancestorIds);
+          window.setTimeout(() => document.getElementById(`node-row-${link.nodeId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+        }}
+      >
+        <LinkIcon className="h-4 w-4" />
+        <span className="hidden sm:inline">{t("node.goTo")}</span>
       </Button>
     );
   }

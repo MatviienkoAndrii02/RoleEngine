@@ -45,7 +45,11 @@ export function TemplateFilterSelect({
     return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name));
   }, [templates]);
 
-  const filteredTagOptions = tags.filter((tag) => tag.name.toLowerCase().includes(tagQuery.trim().toLowerCase()));
+  const selectedTags = tags.filter((tag) => selectedTagIds.includes(tag.id));
+  const filteredTagOptions = tags.filter((tag) => (
+    !selectedTagIds.includes(tag.id) &&
+    tag.name.toLowerCase().includes(tagQuery.trim().toLowerCase())
+  ));
   const filteredTemplates = templates.filter((template) => {
     const query = templateQuery.trim().toLowerCase();
     const matchesName = !query || template.name.toLowerCase().includes(query);
@@ -69,24 +73,38 @@ export function TemplateFilterSelect({
       <Input value={templateQuery} onChange={(event) => setTemplateQuery(event.target.value)} placeholder={t("template.searchByName")} />
       {tags.length > 0 && (
         <div className="space-y-2 rounded-md border border-border p-2">
+          {selectedTags.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-muted-foreground">{t("templateTag.selected")}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedTags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => toggleTag(tag.id)}
+                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${templateTagColorClass(tag.color)} outline outline-2 outline-ring`}
+                  >
+                    {tag.name}
+                    <X className="h-3 w-3" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <Input value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} placeholder={t("templateTag.searchPlaceholder")} />
           <div className="flex flex-wrap gap-1.5">
             {filteredTagOptions.length === 0 ? (
               <span className="text-xs text-muted-foreground">{t("templateTag.noSearchResults")}</span>
-            ) : filteredTagOptions.map((tag) => {
-              const active = selectedTagIds.includes(tag.id);
-              return (
+            ) : filteredTagOptions.map((tag) => (
                 <button
                   key={tag.id}
                   type="button"
                   onClick={() => toggleTag(tag.id)}
-                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${templateTagColorClass(tag.color)} ${active ? "outline outline-2 outline-ring" : ""}`}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${templateTagColorClass(tag.color)}`}
                 >
                   {tag.name}
-                  {active && <X className="h-3 w-3" />}
                 </button>
-              );
-            })}
+            ))}
           </div>
           {selectedTagIds.length > 0 && (
             <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedTagIds([])}>

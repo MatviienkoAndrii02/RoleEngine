@@ -12,6 +12,7 @@ import {
   Folder,
   Gem,
   HeartPulse,
+  Link,
   Package,
   Shield,
   Skull,
@@ -50,6 +51,7 @@ const iconComponents = {
   skull: Skull,
   cog: Cog,
   star: Star,
+  link: Link,
 } satisfies Record<NodeIconName, LucideIcon>;
 
 const defaultIconsByType = {
@@ -59,6 +61,7 @@ const defaultIconsByType = {
   TABLE: "table",
   CONTAINER: "folder",
   GROUP: "folder",
+  LINK: "link",
 } satisfies Record<NodeType, NodeIconName>;
 
 export function getNodeIconName(icon: unknown, type: NodeType): NodeIconName {
@@ -133,5 +136,6 @@ function getIconLabels(t: ReturnType<typeof useI18n>["t"]): Record<NodeIconName,
     skull: t("icons.skull"),
     cog: t("icons.cog"),
     star: t("icons.star"),
+    link: t("icons.link"),
   };
 }

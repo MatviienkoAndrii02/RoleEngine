@@ -14,7 +14,7 @@ export type TemplateSlotModel = {
 };
 
 export function parseAcceptedNodeTypes(value: unknown): NodeType[] {
-  const allowed: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
+  const allowed: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP", "LINK"];
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is NodeType => typeof item === "string" && allowed.includes(item as NodeType));
 }

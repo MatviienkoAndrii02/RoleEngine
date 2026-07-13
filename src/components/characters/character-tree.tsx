@@ -15,6 +15,7 @@ import { useI18n } from "@/i18n/client";
 export function CharacterTree({ nodes, editorSectionId = "node-editor", searchable = false }: { nodes: NodeTreeItem[]; editorSectionId?: string; searchable?: boolean }) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
+  const nodePickRequest = useCharacterUiStore((state) => state.nodePickRequest);
   const normalizedQuery = query.trim().toLowerCase();
   const visibleNodes = useMemo(() => normalizedQuery ? filterNodeTree(nodes, normalizedQuery) : nodes, [nodes, normalizedQuery]);
   if (nodes.length === 0) {
@@ -23,6 +24,11 @@ export function CharacterTree({ nodes, editorSectionId = "node-editor", searchab
 
   return (
     <div className="space-y-3">
+      {nodePickRequest && (
+        <div className="rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary">
+          {t("node.pickMode")}
+        </div>
+      )}
       {searchable && (
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -50,7 +56,7 @@ export function CharacterTree({ nodes, editorSectionId = "node-editor", searchab
 
 function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTreeItem; depth: number; editorSectionId: string; forceExpanded: boolean }) {
   const { t } = useI18n();
-  const { collapsedNodeIds, expandedNodeIds, selectedNodeId, toggleNode, selectNode, setEditorMode, openSidebarSection } = useCharacterUiStore();
+  const { collapsedNodeIds, expandedNodeIds, selectedNodeId, nodePickRequest, toggleNode, completeNodePick, selectNode, setEditorMode, openSidebarSection } = useCharacterUiStore();
   const collapsedByDefault = Boolean(node.data.collapsedByDefault);
   const collapsed = !forceExpanded && (collapsedByDefault ? !expandedNodeIds.has(node.id) : collapsedNodeIds.has(node.id));
   const selected = selectedNodeId === node.id;
@@ -58,16 +64,20 @@ function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTr
   const Icon = getNodeIconComponent(node.data.icon, node.type);
   const [textExpanded, setTextExpanded] = useState(false);
   const [tableExpanded, setTableExpanded] = useState(false);
+  const pickAllowed = !nodePickRequest?.allowedTypes?.length || nodePickRequest.allowedTypes.includes(node.type);
 
   return (
     <div>
       <div
+        id={`node-row-${node.id}`}
         className={cn(
           "grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border border-transparent py-1.5 pr-3 text-sm",
-          selected ? "border-primary bg-primary/10" : "hover:bg-muted"
+          nodePickRequest && pickAllowed && "cursor-crosshair border-primary/20 hover:bg-primary/10",
+          nodePickRequest && !pickAllowed && "cursor-not-allowed opacity-50",
+          !nodePickRequest && (selected ? "border-primary bg-primary/10" : "hover:bg-muted")
         )}
         style={{ paddingLeft: `${depth * 18 + 4}px` }}
-        onClick={() => selectNode(node.id)}
+        onClick={() => nodePickRequest ? pickAllowed && completeNodePick(node.id) : selectNode(node.id)}
       >
         <Button
           aria-label={collapsed ? t("node.expand") : t("node.collapse")}
@@ -95,7 +105,7 @@ function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTr
           tableExpanded={tableExpanded}
           onToggleTable={() => setTableExpanded((value) => !value)}
         />
-        {selected && (
+        {selected && !nodePickRequest && (
           <div className="flex items-center gap-1">
             <Button
               type="button"
@@ -168,5 +178,6 @@ function filterNodeTree(nodes: NodeTreeItem[], query: string): NodeTreeItem[] {
 function nodeMatches(node: NodeTreeItem, query: string) {
   const description = typeof node.data.description === "string" ? node.data.description : "";
   const text = node.type === "TEXT" && "text" in node.data ? node.data.text : "";
-  return [node.name, node.path, node.type, description, text].some((value) => value.toLowerCase().includes(query));
+  const linkLabel = node.type === "LINK" ? node.resolvedLink?.label ?? "" : "";
+  return [node.name, node.path, node.type, description, text, linkLabel].some((value) => value.toLowerCase().includes(query));
 }
