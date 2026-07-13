@@ -5,6 +5,7 @@ import { parseAcceptedNodeTypes } from "@/domain/template-slots";
 import { parseTemplateTagColor } from "@/domain/template-tags";
 import { DependencyEngine, type NodeCalculation } from "@/engine/dependency-engine";
 import { CharacterTree } from "@/components/characters/character-tree";
+import { CharacterLiveRefresh } from "@/components/characters/character-live-refresh";
 import { NodeEditor } from "@/components/characters/node-editor";
 import { NumericEffectBuilder } from "@/components/characters/numeric-effect-builder";
 import { StructuralEffectBuilder } from "@/components/characters/structural-effect-builder";
@@ -21,6 +22,7 @@ import { resolveCharacterNodeLinks } from "@/server/node-links";
 import { getTranslator } from "@/i18n/server";
 import { parseCharacterNodeModels, parseEffectDefinitions, type PersistedJsonDiagnostic } from "@/server/read-models";
 import { collectSubtreeIds } from "@/domain/tree";
+import { latestDate } from "@/server/character-version";
 
 export default async function CharacterPage({ params }: { params: Promise<{ characterId: string }> }) {
   const { characterId } = await params;
@@ -59,6 +61,12 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
 
   const parsedNodes = parseCharacterNodeModels(data.rootNodes);
   const parsedEffects = parseEffectDefinitions(data.effects);
+  const initialVersion = latestDate([
+    data.updatedAt,
+    ...data.rootNodes.map((node) => node.updatedAt),
+    ...data.effects.map((effect) => effect.updatedAt),
+    ...data.auditLogs.map((log) => log.createdAt),
+  ]).toISOString();
   let diagnostics = [...parsedNodes.diagnostics, ...parsedEffects.diagnostics];
   const nodes = parsedNodes.nodes;
   const effects = parsedEffects.effects;
@@ -136,6 +144,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
 
   return (
     <div className="space-y-6">
+      <CharacterLiveRefresh characterId={characterId} initialVersion={initialVersion} enabled={!canEdit} />
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{data.name}</h1>
