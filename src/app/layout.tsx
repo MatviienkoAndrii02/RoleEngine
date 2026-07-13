@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, LayoutDashboard, LogOut, WandSparkles } from "lucide-react";
+import { BookOpen, LayoutDashboard, LogOut } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -39,10 +39,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <Link className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted" href="/templates">
                       <BookOpen className="h-4 w-4" />
                       {t("nav.templates")}
-                    </Link>
-                    <Link className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted" href="/effects">
-                      <WandSparkles className="h-4 w-4" />
-                      {t("nav.effects")}
                     </Link>
                   </>}
                   <div className="ml-2 flex items-center gap-2 border-l pl-4">
