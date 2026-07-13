@@ -16,6 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
 import { NodeIconPicker } from "@/components/characters/node-icons";
 import { NodePicker } from "@/components/characters/node-picker";
 import { localizedApiError } from "@/i18n/api-errors";
@@ -287,6 +288,7 @@ function CreatedNodeFields({ payload, operation, type, setType }: { payload?: Ef
         </label>
       </div>
       <NodeIconPicker type={actualType} defaultValue={data.icon} />
+      <NodeAccentColorPicker name="createdAccentColor" defaultValue={typeof data.accentColor === "string" ? data.accentColor : undefined} />
       {actualType === "NUMBER" && (
         <div className="grid grid-cols-3 gap-2">
           <Field label={t("common.value")} name="createdValue" type="number" step="any" defaultValue={String(data.value ?? 0)} />
@@ -355,6 +357,7 @@ function StaticPatchField({ field, patch, targetType }: { field: PatchFieldDefin
   const { t } = useI18n();
   const value = patch[field.field];
   if (field.field === "icon" && targetType) return <NodeIconPicker type={targetType} defaultValue={typeof value === "string" ? value : undefined} />;
+  if (field.field === "accentColor") return <NodeAccentColorPicker name="patchTextValue" defaultValue={typeof value === "string" ? value : undefined} />;
   if (field.kind === "boolean") {
     return <label className="flex items-center gap-2 text-sm"><input name="patchBooleanValue" type="checkbox" defaultChecked={Boolean(value)} />{t(field.labelKey)}</label>;
   }
@@ -394,9 +397,12 @@ function readStaticPatch(field: PatchFieldDefinition, data: FormData) {
   return { [field.field]: String(data.get("patchTextValue") ?? "") };
 }
 function readCreatedData(type: NodeType, data: FormData, current: Record<string, unknown> | undefined) {
+  const icon = String(data.get("icon") ?? "");
+  const accentColor = String(data.get("createdAccentColor") ?? "");
   const common = {
     description: String(data.get("createdDescription") ?? ""),
-    icon: String(data.get("icon") ?? ""),
+    ...(icon ? { icon } : {}),
+    ...(accentColor ? { accentColor } : {}),
     collapsedByDefault: data.get("createdCollapsed") === "on",
     hiddenFromPlayer: data.get("createdHiddenFromPlayer") === "on",
   };
@@ -422,6 +428,7 @@ const commonStructuralFields: PatchFieldDefinition[] = [
   { field: "hiddenFromPlayer", labelKey: "node.hiddenFromPlayer", kind: "boolean", derived: false },
   { field: "description", labelKey: "common.description", kind: "text", derived: false },
   { field: "icon", labelKey: "icons.label", kind: "text", derived: false },
+  { field: "accentColor", labelKey: "node.accentColor", kind: "text", derived: false },
 ];
 
 function parseTemplateSelectValue(value: string) {

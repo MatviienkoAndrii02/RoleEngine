@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Save, Trash2, X } from "lucide-react";
 import { NODE_ICON_NAMES, type CharacterNodeModel, type NodeData, type NodeIconName, type NodeType } from "@/domain/nodes";
+import { TEMPLATE_TAG_COLOR_NAMES, type TemplateTagColorName } from "@/domain/template-tags";
 import { useCharacterUiStore } from "@/store/character-ui-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TableEditor } from "@/components/characters/table-editor";
 import { NodeIconPicker } from "@/components/characters/node-icons";
+import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
 import { NodePicker } from "@/components/characters/node-picker";
 import { ApplyTemplate } from "@/components/characters/apply-template";
 import { ApplyTemplateToTemplate } from "@/components/templates/apply-template-to-template";
@@ -192,6 +194,7 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
         </label>
       </div>
       <NodeIconPicker key={`icon-${type}-${active?.id ?? "new"}`} type={type} defaultValue={active?.data.icon} />
+      <NodeAccentColorPicker key={`accent-${active?.id ?? "new"}`} defaultValue={active?.data.accentColor} />
       <DataFields
         key={`data-${type}-${active?.id ?? "new"}`}
         type={type}
@@ -277,9 +280,11 @@ function readNodeData(type: NodeType, form: FormData): NodeData {
   };
   const description = String(form.get("description") ?? "").trim() || undefined;
   const icon = readIcon(form.get("icon"));
+  const accentColor = readAccentColor(form.get("accentColor"));
   const common = {
     description,
     icon,
+    accentColor,
     collapsedByDefault: form.get("collapsedByDefault") === "on",
     hiddenFromPlayer: form.get("hiddenFromPlayer") === "on",
   };
@@ -302,6 +307,11 @@ function readNodeData(type: NodeType, form: FormData): NodeData {
 function readIcon(value: FormDataEntryValue | null): NodeIconName | undefined {
   const icon = String(value ?? "");
   return (NODE_ICON_NAMES as readonly string[]).includes(icon) ? icon as NodeIconName : undefined;
+}
+
+function readAccentColor(value: FormDataEntryValue | null): TemplateTagColorName | undefined {
+  const color = String(value ?? "");
+  return TEMPLATE_TAG_COLOR_NAMES.includes(color as TemplateTagColorName) ? color as TemplateTagColorName : undefined;
 }
 
 function readTableData(raw: string) {

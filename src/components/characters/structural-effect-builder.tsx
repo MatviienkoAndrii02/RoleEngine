@@ -10,6 +10,7 @@ import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
+import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
 import { NodeIconPicker } from "@/components/characters/node-icons";
 import { NodePicker } from "@/components/characters/node-picker";
 import { localizedApiError } from "@/i18n/api-errors";
@@ -84,6 +85,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
               createType,
               String(data.get("description") || ""),
               String(data.get("icon") || ""),
+              String(data.get("accentColor") || ""),
               data.get("collapsedByDefault") === "on",
               data.get("hiddenFromPlayer") === "on",
             ),
@@ -148,6 +150,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
             {t("node.hiddenFromPlayer")}
           </label>
           <NodeIconPicker type={operation === "CREATE_GROUP" ? "GROUP" : nodeType} />
+          <NodeAccentColorPicker />
         </>
       ) : (
         <PatchControls
@@ -224,6 +227,7 @@ function PatchControls({
 function StaticPatchField({ field, targetType }: { field: PatchFieldDefinition; targetType?: NodeType }) {
   const { t } = useI18n();
   if (field.field === "icon" && targetType) return <NodeIconPicker type={targetType} />;
+  if (field.field === "accentColor") return <NodeAccentColorPicker name="patchTextValue" />;
   if (field.kind === "boolean") {
     return (
       <label className="flex items-center gap-2 text-sm">
@@ -263,8 +267,14 @@ function SourceFields({ nodes, slots, kind, setKind }: { nodes: CharacterNodeMod
   );
 }
 
-function defaultData(type: NodeType, description: string, icon: string, collapsedByDefault = false, hiddenFromPlayer = false) {
-  const common = { description, icon, collapsedByDefault, hiddenFromPlayer };
+function defaultData(type: NodeType, description: string, icon: string, accentColor: string, collapsedByDefault = false, hiddenFromPlayer = false) {
+  const common = {
+    description,
+    ...(icon ? { icon } : {}),
+    ...(accentColor ? { accentColor } : {}),
+    collapsedByDefault,
+    hiddenFromPlayer,
+  };
   if (type === "NUMBER") return { ...common, value: 0 };
   if (type === "BAR") return { ...common, current: 0, min: null, max: 10 };
   if (type === "TEXT") return { ...common, text: "" };
@@ -294,6 +304,7 @@ const commonStructuralFields: PatchFieldDefinition[] = [
   { field: "hiddenFromPlayer", labelKey: "node.hiddenFromPlayer", kind: "boolean", derived: false },
   { field: "description", labelKey: "common.description", kind: "text", derived: false },
   { field: "icon", labelKey: "icons.label", kind: "text", derived: false },
+  { field: "accentColor", labelKey: "node.accentColor", kind: "text", derived: false },
 ];
 
 function parseTemplateSelectValue(value: string) {

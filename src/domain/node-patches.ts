@@ -40,6 +40,7 @@ export function getStructuralPatchFields(type: NodeType): PatchFieldDefinition[]
     { field: "hiddenFromPlayer", labelKey: "node.hiddenFromPlayer", kind: "boolean", derived: false },
     { field: "description", labelKey: "common.description", kind: "text", derived: false },
     { field: "icon", labelKey: "icons.label", kind: "text", derived: false },
+    { field: "accentColor", labelKey: "node.accentColor", kind: "text", derived: false },
   ];
 
   if (type === "TEXT") {

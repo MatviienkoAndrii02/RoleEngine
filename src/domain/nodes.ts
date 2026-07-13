@@ -1,3 +1,5 @@
+import type { TemplateTagColorName } from "@/domain/template-tags";
+
 export type NodeType = "NUMBER" | "BAR" | "TEXT" | "TABLE" | "CONTAINER" | "GROUP" | "LINK";
 
 export const NODE_ICON_NAMES = [
@@ -96,6 +98,7 @@ export type ResolvedNodeLink =
 type CommonNodePresentation = {
   description?: string;
   icon?: NodeIconName;
+  accentColor?: TemplateTagColorName;
   collapsedByDefault?: boolean;
   hiddenFromPlayer?: boolean;
 };

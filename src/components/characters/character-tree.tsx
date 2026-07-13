@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Pencil, Plus, Search } from "lucide-react";
 import type { NodeTreeItem } from "@/domain/nodes";
+import { templateTagColorLineClass } from "@/domain/template-tags";
 import { useCharacterUiStore } from "@/store/character-ui-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +66,7 @@ function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTr
   const [textExpanded, setTextExpanded] = useState(false);
   const [tableExpanded, setTableExpanded] = useState(false);
   const pickAllowed = !nodePickRequest?.allowedTypes?.length || nodePickRequest.allowedTypes.includes(node.type);
+  const accentColor = typeof node.data.accentColor === "string" ? node.data.accentColor : null;
 
   return (
     <div>
@@ -72,6 +74,7 @@ function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTr
         id={`node-row-${node.id}`}
         className={cn(
           "grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border border-transparent py-1.5 pr-3 text-sm",
+          "relative",
           nodePickRequest && pickAllowed && "cursor-crosshair border-primary/20 hover:bg-primary/10",
           nodePickRequest && !pickAllowed && "cursor-not-allowed opacity-50",
           !nodePickRequest && (selected ? "border-primary bg-primary/10" : "hover:bg-muted")
@@ -79,6 +82,12 @@ function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTr
         style={{ paddingLeft: `${depth * 18 + 4}px` }}
         onClick={() => nodePickRequest ? pickAllowed && completeNodePick(node.id) : selectNode(node.id)}
       >
+        {accentColor && (
+          <span
+            className={`absolute bottom-1.5 top-1.5 w-1.5 rounded-md ${templateTagColorLineClass(accentColor)}`}
+            style={{ left: `${depth * 18 + 2}px` }}
+          />
+        )}
         <Button
           aria-label={collapsed ? t("node.expand") : t("node.collapse")}
           size="icon"

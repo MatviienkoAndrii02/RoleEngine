@@ -50,6 +50,12 @@ test("validates optional node icons", () => {
   assert.throws(() => parseNodeData("BAR", { current: 1, min: 5, max: 3 }));
 });
 
+test("validates optional node accent colors", () => {
+  assert.doesNotThrow(() => parseNodeData("NUMBER", { value: 10, accentColor: "blue-solid" }));
+  assert.doesNotThrow(() => parseNodeData("GROUP", { color: "teal", accentColor: "pink-soft" }));
+  assert.throws(() => parseNodeData("TEXT", { text: "Note", accentColor: "custom-css" }));
+});
+
 test("validates link node targets", () => {
   assert.doesNotThrow(() => parseNodeData("LINK", { targetKind: "node", targetNodeId: "node_1", icon: "link" }));
   assert.doesNotThrow(() => parseNodeData("LINK", { targetKind: "character", targetCharacterId: "character_1" }));

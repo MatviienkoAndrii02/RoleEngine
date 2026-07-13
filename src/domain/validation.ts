@@ -7,6 +7,7 @@ const idSchema = z.string().trim().min(1, "Identifier is required");
 const nameSchema = z.string().trim().min(1, "Name is required").max(200);
 const descriptionSchema = z.string().max(10_000).optional();
 const iconSchema = z.enum(NODE_ICON_NAMES).optional();
+const nodeAccentColorSchema = z.enum(TEMPLATE_TAG_COLOR_NAMES).optional();
 const finiteNumberSchema = z.number().finite();
 const usernameSchema = z.string()
   .trim()
@@ -20,6 +21,7 @@ const described = <T extends z.ZodRawShape>(shape: T) =>
     ...shape,
     description: descriptionSchema,
     icon: iconSchema,
+    accentColor: nodeAccentColorSchema,
     collapsedByDefault: z.boolean().optional(),
     hiddenFromPlayer: z.boolean().optional(),
   }).strict();
@@ -27,6 +29,7 @@ const described = <T extends z.ZodRawShape>(shape: T) =>
 const commonNodePresentationSchema = z.object({
   description: descriptionSchema,
   icon: iconSchema,
+  accentColor: nodeAccentColorSchema,
   collapsedByDefault: z.boolean().optional(),
   hiddenFromPlayer: z.boolean().optional(),
 }).strict();
