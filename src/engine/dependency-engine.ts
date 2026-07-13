@@ -1,4 +1,4 @@
-import type { EffectCondition, EffectContribution, EffectDefinition, EffectSource, FormulaExpression } from "@/domain/effects";
+import type { EffectCondition, EffectContribution, EffectDefinition, EffectOperation, EffectSource, FormulaExpression } from "@/domain/effects";
 import type { CharacterNodeModel } from "@/domain/nodes";
 import { readNumericValue } from "@/domain/nodes";
 
@@ -13,6 +13,11 @@ export type CalculationLine = {
   label: string;
   value: number;
   kind: "base" | "flat" | "multiplier" | "result";
+  operation?: EffectOperation;
+  amount?: number;
+  field?: string;
+  effectId?: string;
+  referencedNodeIds?: string[];
 };
 
 export type NodeCalculation = {
@@ -127,6 +132,7 @@ export class DependencyEngine {
         effectId: effect.id,
         effectName: effect.name,
         sourceNodeId: effect.sourceNodeId,
+        referencedNodeIds: collectEffectReferenceNodeIds(effect),
         targetNodeId,
         operation: effect.operation,
         priority: effect.priority,
@@ -176,26 +182,26 @@ export class DependencyEngine {
       for (const contribution of orderedContributions) {
         if (contribution.operation === "SET_BAR_MAX") {
           current = contribution.amount;
-          lines.push({ label: contribution.effectName, value: contribution.amount, kind: "flat" });
+          lines.push(contributionLine(contribution, contribution.amount, "flat"));
         }
         if (contribution.operation === "ADD") {
           current += contribution.amount;
-          lines.push({ label: contribution.effectName, value: contribution.amount, kind: "flat" });
+          lines.push(contributionLine(contribution, contribution.amount, "flat"));
         }
         if (contribution.operation === "SUBTRACT") {
           current -= contribution.amount;
-          lines.push({ label: contribution.effectName, value: -contribution.amount, kind: "flat" });
+          lines.push(contributionLine(contribution, -contribution.amount, "flat"));
         }
         if (contribution.operation === "MULTIPLY") {
           current *= contribution.amount;
           multiplier *= contribution.amount;
-          lines.push({ label: contribution.effectName, value: contribution.amount, kind: "multiplier" });
+          lines.push(contributionLine(contribution, contribution.amount, "multiplier"));
         }
         if (contribution.operation === "PERCENT_BONUS") {
           const percentMultiplier = 1 + contribution.amount / 100;
           current *= percentMultiplier;
           multiplier *= percentMultiplier;
-          lines.push({ label: contribution.effectName, value: percentMultiplier, kind: "multiplier" });
+          lines.push(contributionLine(contribution, percentMultiplier, "multiplier"));
         }
       }
 
@@ -352,6 +358,31 @@ function collectSourceNodeIds(source: EffectSource): string[] {
   if (source.kind === "node") return [source.nodeId];
   if (source.kind === "formula") return collectFormulaNodeIds(source.expression);
   return [];
+}
+
+function collectEffectReferenceNodeIds(effect: EffectDefinition): string[] {
+  return uniqueIds([
+    ...collectSourceNodeIds(effect.source),
+    ...collectConditionNodeIds(effect.condition),
+    ...(effect.sourceNodeId ? [effect.sourceNodeId] : []),
+  ]);
+}
+
+function contributionLine(contribution: EffectContribution, value: number, kind: CalculationLine["kind"]): CalculationLine {
+  return {
+    label: contribution.effectName,
+    value,
+    kind,
+    operation: contribution.operation,
+    amount: contribution.amount,
+    field: contribution.field,
+    effectId: contribution.effectId,
+    referencedNodeIds: contribution.referencedNodeIds,
+  };
+}
+
+function uniqueIds(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 function collectFormulaNodeIds(expression: FormulaExpression): string[] {

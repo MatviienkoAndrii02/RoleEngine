@@ -42,6 +42,20 @@ test("formula sources are evaluated", () => {
   assert.equal(result.calculations.get("mana")?.final, 18);
 });
 
+test("calculation lines explain operation and referenced nodes", () => {
+  const result = new DependencyEngine(
+    [
+      node("strength", 10),
+      { ...node("hidden_bonus", 5), data: { value: 5, hiddenFromPlayer: true } },
+    ],
+    [effect("secret", "ADD", "strength", { kind: "node", nodeId: "hidden_bonus", field: "value" })],
+  ).evaluate();
+  const line = result.calculations.get("strength")?.lines.find((item) => item.effectId === "secret");
+  assert.equal(line?.operation, "ADD");
+  assert.equal(line?.amount, 5);
+  assert.deepEqual(line?.referencedNodeIds, ["hidden_bonus"]);
+});
+
 test("cycles are detected", () => {
   const result = new DependencyEngine([node("a", 1), node("b", 2)], [effect("ab", "ADD", "b", { kind: "node", nodeId: "a" }), effect("ba", "ADD", "a", { kind: "node", nodeId: "b" })]).evaluate();
   assert.equal(result.cycles.length, 1);

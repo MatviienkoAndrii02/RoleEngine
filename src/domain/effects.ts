@@ -68,6 +68,7 @@ export type EffectContribution = {
   effectId: string;
   effectName: string;
   sourceNodeId?: string | null;
+  referencedNodeIds?: string[];
   targetNodeId: string;
   operation: EffectOperation;
   priority: number;

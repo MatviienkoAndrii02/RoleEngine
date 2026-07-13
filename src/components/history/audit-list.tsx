@@ -23,10 +23,12 @@ export function AuditList({
   logs,
   nodes = [],
   effects = [],
+  maskUnknownNodeNames = false,
 }: {
   logs: AuditLogWithActor[];
   nodes?: CharacterNodeModel[];
   effects?: EffectDefinition[];
+  maskUnknownNodeNames?: boolean;
 }) {
   const { language, t } = useI18n();
   const [actionFilter, setActionFilter] = useState<AuditAction | "ALL">("ALL");
@@ -45,7 +47,7 @@ export function AuditList({
     return ["ALL", ...Array.from(values).sort()] as AuditEntity[];
   }, [logs]);
 
-  const formatted = useMemo(() => logs.map((log) => formatLog(log, knownNodes, knownEffects, t)), [logs, knownNodes, knownEffects, t]);
+  const formatted = useMemo(() => logs.map((log) => formatLog(log, knownNodes, knownEffects, t, { maskUnknownNodeNames })), [logs, knownNodes, knownEffects, t, maskUnknownNodeNames]);
   const normalizedQuery = query.trim().toLowerCase();
   const filtered = formatted.filter((item) => {
     if (actionFilter !== "ALL" && item.log.action !== actionFilter) return false;
@@ -191,11 +193,18 @@ export function AuditList({
   );
 }
 
-function formatLog(log: AuditLogWithActor, nodes: Map<string, CharacterNodeModel>, effects: Map<string, EffectDefinition>, t: ReturnType<typeof useI18n>["t"]) {
+function formatLog(
+  log: AuditLogWithActor,
+  nodes: Map<string, CharacterNodeModel>,
+  effects: Map<string, EffectDefinition>,
+  t: ReturnType<typeof useI18n>["t"],
+  options: { maskUnknownNodeNames: boolean },
+) {
   const oldValue = asRecord(log.oldValue);
   const newValue = asRecord(log.newValue);
-  const entityName = entityDisplayName(log, oldValue, newValue, nodes, effects);
-  const changes = diffRecords(oldValue, newValue, log.entityType, t);
+  const hiddenNodeLog = options.maskUnknownNodeNames && log.entityType === "CharacterNode" && !nodes.has(log.entityId);
+  const entityName = hiddenNodeLog ? t("dependencies.hiddenNode") : entityDisplayName(log, oldValue, newValue, nodes, effects);
+  const changes = hiddenNodeLog ? [] : diffRecords(oldValue, newValue, log.entityType, t);
   let title = `${actionVerb(log.action, t)} ${entityLabel(log.entityType, t)} ${entityName}`;
   let description = "";
 
@@ -228,7 +237,9 @@ function formatLog(log: AuditLogWithActor, nodes: Map<string, CharacterNodeModel
     if (operation) description = t("history.operation", { operation });
   }
 
-  const searchText = [title, description, log.action, log.entityType, log.fieldPath, JSON.stringify(oldValue), JSON.stringify(newValue)].join(" ");
+  const searchText = hiddenNodeLog
+    ? [title, description, log.action, log.entityType, log.fieldPath].join(" ")
+    : [title, description, log.action, log.entityType, log.fieldPath, JSON.stringify(oldValue), JSON.stringify(newValue)].join(" ");
   return { log, title, description, changes, searchText };
 }
 

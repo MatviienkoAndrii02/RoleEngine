@@ -432,6 +432,10 @@ export const translations = {
     "dependencies.graph": "Граф залежностей · {count}",
     "dependencies.empty": "Розрахованих числових залежностей ще немає.",
     "dependencies.nodeFallback": "Вузол {id}",
+    "dependencies.base": "База",
+    "dependencies.result": "Результат",
+    "dependencies.references": "Задіяні вузли: {refs}",
+    "dependencies.hiddenNode": "???",
 
     "history.search": "Пошук в історії",
     "history.allActions": "Усі дії",
@@ -914,6 +918,10 @@ export const translations = {
     "dependencies.graph": "Dependency graph · {count}",
     "dependencies.empty": "No calculated numeric dependencies yet.",
     "dependencies.nodeFallback": "Node {id}",
+    "dependencies.base": "Base",
+    "dependencies.result": "Result",
+    "dependencies.references": "Referenced nodes: {refs}",
+    "dependencies.hiddenNode": "???",
 
     "history.search": "Search history",
     "history.allActions": "All actions",

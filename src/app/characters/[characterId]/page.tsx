@@ -96,7 +96,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
   const visibleChangedCalculationNodeIds = new Set(visibleChangedCalculations.map((calculation) => calculation.nodeId));
   const visibleChangedDependencyEdges = canEdit
     ? changedDependencyEdges
-    : changedDependencyEdges.filter((edge) => visibleChangedCalculationNodeIds.has(edge.targetNodeId) && visibleNodeIds.has(edge.sourceNodeId));
+    : changedDependencyEdges.filter((edge) => visibleChangedCalculationNodeIds.has(edge.targetNodeId));
   const templates = canEdit
     ? await prisma.entityTemplate.findMany({
         where: { archivedAt: null, OR: [{ workspaceId: data.workspaceId }, { workspaceId: null, isGlobal: true }] },
@@ -210,7 +210,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
             <DependencyPanel calculations={visibleChangedCalculations} nodes={visibleNodes} edges={visibleChangedDependencyEdges} />
           </SidebarSection>
           <SidebarSection id="history" title={t("character.history")} count={data.auditLogs.length}>
-            <AuditList logs={data.auditLogs} nodes={visibleNodes} effects={effects} />
+            <AuditList logs={data.auditLogs} nodes={visibleNodes} effects={effects} maskUnknownNodeNames={!canEdit} />
           </SidebarSection>
         </div>
       </div>
