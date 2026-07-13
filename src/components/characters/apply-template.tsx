@@ -15,7 +15,7 @@ export function ApplyTemplate({
   defaultParentId,
 }: {
   characterId: string;
-  templates: Array<{ id: string; name: string; kind: string; slots?: TemplateSlotModel[] }>;
+  templates: Array<{ id: string; name: string; slots?: TemplateSlotModel[] }>;
   nodes: CharacterNodeModel[];
   defaultParentId?: string | null;
 }) {
@@ -60,7 +60,7 @@ export function ApplyTemplate({
         <option value="">{t("template.choose")}</option>
         {templates.map((template) => (
           <option key={template.id} value={template.id}>
-            {template.name} - {template.kind.toLowerCase()}
+            {template.name}
           </option>
         ))}
       </select>

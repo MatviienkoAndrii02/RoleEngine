@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CreateNodePayload, EffectCondition, EffectDefinition, EffectSource, EffectTarget, FormulaExpression } from "@/domain/effects";
 import { NODE_ICON_NAMES, type NodeData, type NodeType, type TableColumnType } from "@/domain/nodes";
+import { TEMPLATE_TAG_COLOR_NAMES } from "@/domain/template-tags";
 
 const idSchema = z.string().trim().min(1, "Identifier is required");
 const nameSchema = z.string().trim().min(1, "Name is required").max(200);
@@ -330,7 +331,7 @@ export const updateTemplateSlotCommandSchema = z.object({
 export const templateKindSchema = z.enum(["CHARACTER", "ITEM", "SKILL", "PASSIVE_TALENT", "MUTATION", "BODY_PART", "OTHER"]);
 
 export const createTemplateCommandSchema = z.object({
-  kind: templateKindSchema,
+  kind: templateKindSchema.optional(),
   name: nameSchema,
   description: descriptionSchema,
   isDefaultCharacter: z.boolean().optional(),
@@ -341,6 +342,38 @@ export const updateTemplateCommandSchema = z.object({
   description: z.string().max(10_000).optional(),
   isDefaultCharacter: z.boolean().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, { message: "At least one field must be provided" });
+
+export const templateTagColorSchema = z.enum(TEMPLATE_TAG_COLOR_NAMES);
+
+export const createTemplateTagCommandSchema = z.object({
+  templateId: idSchema,
+  name: nameSchema,
+  color: templateTagColorSchema.optional(),
+}).strict();
+
+export const updateTemplateTagCommandSchema = z.object({
+  templateId: idSchema,
+  tagId: idSchema,
+  name: nameSchema.optional(),
+  color: templateTagColorSchema.optional(),
+}).strict().refine((value) => value.name !== undefined || value.color !== undefined, { message: "At least one field must be provided" });
+
+export const updateTemplateTagBodyCommandSchema = z.object({
+  name: nameSchema.optional(),
+  color: templateTagColorSchema.optional(),
+}).strict().refine((value) => value.name !== undefined || value.color !== undefined, { message: "At least one field must be provided" });
+
+export const deleteTemplateTagCommandSchema = z.object({
+  templateId: idSchema,
+  tagId: idSchema,
+}).strict();
+
+export const assignTemplateTagCommandSchema = z.object({
+  templateId: idSchema,
+  tagId: idSchema,
+}).strict();
+
+export const unassignTemplateTagCommandSchema = assignTemplateTagCommandSchema;
 
 export const recalculateCommandSchema = z.object({ changedNodeIds: z.array(idSchema).max(10_000).optional() }).strict();
 

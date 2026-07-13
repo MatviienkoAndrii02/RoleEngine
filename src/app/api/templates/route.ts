@@ -18,8 +18,8 @@ export async function GET() {
           { workspaceId: null, isGlobal: true },
         ],
       },
-      include: { _count: { select: { nodes: true, effects: true } } },
-      orderBy: [{ kind: "asc" }, { name: "asc" }]
+      include: { tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } }, _count: { select: { nodes: true, effects: true } } },
+      orderBy: [{ name: "asc" }]
     });
 
     return NextResponse.json(templates);

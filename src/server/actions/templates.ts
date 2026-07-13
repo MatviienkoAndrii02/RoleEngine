@@ -7,11 +7,12 @@ import { requireGM, requirePrimaryWritableWorkspace, requireTemplateGM } from "@
 import { writeAudit } from "@/server/audit";
 import { slugify } from "@/server/template-copy";
 import { parseNodeData } from "@/domain/validation";
+import { parseTemplateTagColor, type TemplateTagColorName } from "@/domain/template-tags";
 import { collectSubtreeIds } from "@/domain/tree";
 import { appError } from "@/server/errors";
 
 export async function createTemplate(input: {
-  kind: TemplateKind;
+  kind?: TemplateKind;
   name: string;
   description?: string;
   isDefaultCharacter?: boolean;
@@ -20,7 +21,7 @@ export async function createTemplate(input: {
   const workspaceId = await requirePrimaryWritableWorkspace(actor.id);
   const name = input.name.trim();
   if (!name) throw new Error("Template name is required");
-  if (input.isDefaultCharacter && input.kind !== "CHARACTER") throw new Error("Only a character template can be the default");
+  const kind = input.kind ?? "OTHER";
 
   if (input.isDefaultCharacter) {
     await prisma.entityTemplate.updateMany({
@@ -31,7 +32,7 @@ export async function createTemplate(input: {
 
   const template = await prisma.entityTemplate.create({
     data: {
-      kind: input.kind,
+      kind,
       workspaceId,
       name,
       description: input.description?.trim() || null,
@@ -47,7 +48,7 @@ export async function createTemplate(input: {
     entityType: "EntityTemplate",
     entityId: template.id,
     action: "CREATE",
-    newValue: { name, kind: input.kind }
+    newValue: { name }
   });
 
   revalidatePath("/templates");
@@ -100,7 +101,6 @@ export async function updateTemplate(input: { templateId: string; name?: string;
   const current = (await requireTemplateGM(input.templateId)).template;
   const name = input.name?.trim();
   if (input.name !== undefined && !name) throw new Error("Template name is required");
-  if (input.isDefaultCharacter && current.kind !== "CHARACTER") throw new Error("Only a character template can be the default");
   const template = await prisma.$transaction(async (tx) => {
     if (input.isDefaultCharacter) await tx.entityTemplate.updateMany({ where: { workspaceId: current.workspaceId, isDefaultCharacter: true }, data: { isDefaultCharacter: false } });
     return tx.entityTemplate.update({ where: { id: input.templateId }, data: { name, description: input.description !== undefined ? input.description.trim() || null : undefined, isDefaultCharacter: input.isDefaultCharacter } });
@@ -209,6 +209,132 @@ export async function deleteTemplateNode(input: { templateId: string; nodeId: st
   await prisma.templateNode.delete({ where: { id: input.nodeId } });
   await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "TemplateNode", entityId: input.nodeId, action: "DELETE", oldValue: { name: current.name, type: current.type, data: current.data } });
   revalidatePath(`/templates/${current.templateId}`);
+}
+
+export async function createTemplateTag(input: { templateId: string; name: string; color?: TemplateTagColorName }) {
+  const actor = await requireGM();
+  const { template } = await requireTemplateGM(input.templateId);
+  if (!template.workspaceId) throw appError("FORBIDDEN", "Global templates cannot create workspace tags");
+  const name = input.name.trim();
+  if (!name) throw new Error("Template tag name is required");
+  const color = parseTemplateTagColor(input.color);
+  const tag = await prisma.templateTag.create({
+    data: {
+      workspaceId: template.workspaceId,
+      name,
+      color,
+      createdById: actor.id,
+      templates: { create: { templateId: template.id } },
+    },
+  });
+  await writeAudit({
+    actorId: actor.id,
+    workspaceId: template.workspaceId,
+    entityType: "TemplateTag",
+    entityId: tag.id,
+    action: "CREATE",
+    newValue: { name: tag.name, color: tag.color, templateId: template.id },
+  });
+  revalidatePath("/templates");
+  revalidatePath(`/templates/${template.id}`);
+  return tag;
+}
+
+export async function updateTemplateTag(input: { templateId: string; tagId: string; name?: string; color?: TemplateTagColorName }) {
+  const actor = await requireGM();
+  const { template } = await requireTemplateGM(input.templateId);
+  const current = await prisma.templateTag.findFirstOrThrow({
+    where: { id: input.tagId, workspaceId: template.workspaceId ?? "__global__", archivedAt: null },
+  });
+  const name = input.name?.trim();
+  if (input.name !== undefined && !name) throw new Error("Template tag name is required");
+  const updated = await prisma.templateTag.update({
+    where: { id: input.tagId },
+    data: {
+      name,
+      color: input.color ? parseTemplateTagColor(input.color) : undefined,
+    },
+  });
+  await writeAudit({
+    actorId: actor.id,
+    workspaceId: template.workspaceId,
+    entityType: "TemplateTag",
+    entityId: updated.id,
+    action: "UPDATE",
+    oldValue: { name: current.name, color: current.color },
+    newValue: { name: updated.name, color: updated.color },
+  });
+  revalidatePath("/templates");
+  revalidatePath(`/templates/${template.id}`);
+  return updated;
+}
+
+export async function deleteTemplateTag(input: { templateId: string; tagId: string }) {
+  const actor = await requireGM();
+  const { template } = await requireTemplateGM(input.templateId);
+  const current = await prisma.templateTag.findFirstOrThrow({
+    where: { id: input.tagId, workspaceId: template.workspaceId ?? "__global__", archivedAt: null },
+  });
+  await prisma.$transaction(async (tx) => {
+    await tx.auditLog.create({
+      data: {
+        actorId: actor.id,
+        workspaceId: template.workspaceId,
+        entityType: "TemplateTag",
+        entityId: current.id,
+        action: "DELETE",
+        oldValue: { name: current.name, color: current.color },
+      },
+    });
+    await tx.templateTag.delete({ where: { id: input.tagId } });
+  });
+  revalidatePath("/templates");
+  revalidatePath(`/templates/${template.id}`);
+}
+
+export async function assignTemplateTag(input: { templateId: string; tagId: string }) {
+  const actor = await requireGM();
+  const { template } = await requireTemplateGM(input.templateId);
+  const tag = await prisma.templateTag.findFirstOrThrow({
+    where: { id: input.tagId, workspaceId: template.workspaceId ?? "__global__", archivedAt: null },
+  });
+  await prisma.entityTemplateTag.upsert({
+    where: { templateId_tagId: { templateId: template.id, tagId: tag.id } },
+    update: {},
+    create: { templateId: template.id, tagId: tag.id },
+  });
+  await writeAudit({
+    actorId: actor.id,
+    workspaceId: template.workspaceId,
+    entityType: "EntityTemplate",
+    entityId: template.id,
+    action: "UPDATE",
+    fieldPath: "tags",
+    newValue: { action: "assign", tagId: tag.id, name: tag.name },
+  });
+  revalidatePath("/templates");
+  revalidatePath(`/templates/${template.id}`);
+  return tag;
+}
+
+export async function unassignTemplateTag(input: { templateId: string; tagId: string }) {
+  const actor = await requireGM();
+  const { template } = await requireTemplateGM(input.templateId);
+  const tag = await prisma.templateTag.findFirstOrThrow({
+    where: { id: input.tagId, workspaceId: template.workspaceId ?? "__global__" },
+  });
+  await prisma.entityTemplateTag.deleteMany({ where: { templateId: template.id, tagId: tag.id } });
+  await writeAudit({
+    actorId: actor.id,
+    workspaceId: template.workspaceId,
+    entityType: "EntityTemplate",
+    entityId: template.id,
+    action: "UPDATE",
+    fieldPath: "tags",
+    oldValue: { action: "unassign", tagId: tag.id, name: tag.name },
+  });
+  revalidatePath("/templates");
+  revalidatePath(`/templates/${template.id}`);
 }
 
 export async function createTemplateSlot(input: {

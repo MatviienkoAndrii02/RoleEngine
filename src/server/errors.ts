@@ -84,6 +84,10 @@ export function normalizeApiError(error: unknown): AppError {
     return appError("NOT_FOUND", "Requested entity was not found", 404);
   }
 
+  if (isPrismaUniqueConstraint(error)) {
+    return appError("BAD_REQUEST", "A record with these values already exists", 409);
+  }
+
   if (error instanceof Error) {
     const legacy = legacyErrorByMessage(error.message);
     if (legacy) return legacy;
@@ -97,6 +101,13 @@ function isPrismaNotFound(error: unknown) {
     && error !== null
     && "code" in error
     && (error as { code?: unknown }).code === "P2025";
+}
+
+function isPrismaUniqueConstraint(error: unknown) {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: unknown }).code === "P2002";
 }
 
 function legacyErrorByMessage(message: string): AppError | null {

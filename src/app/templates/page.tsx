@@ -8,6 +8,7 @@ import { TemplateArchiveActions } from "@/components/templates/template-archive-
 import { requirePageGM } from "@/server/page-auth";
 import { getActiveWritableWorkspace } from "@/server/authz";
 import { getTranslator } from "@/i18n/server";
+import { templateTagColorClass } from "@/domain/template-tags";
 
 export default async function TemplatesPage({ searchParams }: { searchParams?: Promise<{ archived?: string }> }) {
   const user = await requirePageGM("/templates");
@@ -24,8 +25,8 @@ export default async function TemplatesPage({ searchParams }: { searchParams?: P
           ? [{ workspaceId: { in: workspaceIds } }]
           : [{ workspaceId: { in: workspaceIds } }, { workspaceId: null, isGlobal: true }],
       },
-      include: { _count: { select: { nodes: true, effects: true } } },
-      orderBy: [{ kind: "asc" }, { name: "asc" }]
+      include: { tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } }, _count: { select: { nodes: true, effects: true } } },
+      orderBy: [{ name: "asc" }]
     })
     .catch(() => []);
 
@@ -64,11 +65,12 @@ export default async function TemplatesPage({ searchParams }: { searchParams?: P
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
                     <CardTitle>{template.name}</CardTitle>
-                    <Badge>{template.kind.toLowerCase()}</Badge>
+                    {template.isDefaultCharacter && <Badge className="bg-accent text-accent-foreground">{t("template.defaultCharacter")}</Badge>}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm text-muted-foreground">
                   <p>{template.description ?? t("common.noDescription")}</p>
+                  {template.tags.length > 0 && <TagList tags={template.tags.map((item) => item.tag)} />}
                   <div className="flex gap-2">
                     <Badge>{t("dashboard.nodes", { count: template._count.nodes })}</Badge>
                     <Badge>{t("dashboard.effects", { count: template._count.effects })}</Badge>
@@ -81,15 +83,15 @@ export default async function TemplatesPage({ searchParams }: { searchParams?: P
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <CardTitle>{template.name}</CardTitle>
-                  <Badge>{template.kind.toLowerCase()}</Badge>
+                  {template.isDefaultCharacter && <Badge className="bg-accent text-accent-foreground">{t("template.defaultCharacter")}</Badge>}
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
                 <p>{template.description ?? t("common.noDescription")}</p>
+                {template.tags.length > 0 && <TagList tags={template.tags.map((item) => item.tag)} />}
                 <div className="flex gap-2">
                   <Badge>{t("dashboard.nodes", { count: template._count.nodes })}</Badge>
                   <Badge>{t("dashboard.effects", { count: template._count.effects })}</Badge>
-                  {template.isDefaultCharacter && <Badge className="bg-accent text-accent-foreground">{t("template.defaultCharacter")}</Badge>}
                 </div>
               </CardContent>
             </Card></Link>
@@ -97,6 +99,18 @@ export default async function TemplatesPage({ searchParams }: { searchParams?: P
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+function TagList({ tags }: { tags: Array<{ id: string; name: string; color: string }> }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {tags.map((tag) => (
+        <span key={tag.id} className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${templateTagColorClass(tag.color)}`}>
+          {tag.name}
+        </span>
+      ))}
     </div>
   );
 }

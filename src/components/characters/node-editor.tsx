@@ -24,7 +24,7 @@ export function NodeEditor({
   characterId?: string;
   templateId?: string;
   nodes: CharacterNodeModel[];
-  templates?: Array<{ id: string; name: string; kind: string; slots?: TemplateSlotModel[] }>;
+  templates?: Array<{ id: string; name: string; slots?: TemplateSlotModel[] }>;
 }) {
   const router = useRouter();
   const { t } = useI18n();

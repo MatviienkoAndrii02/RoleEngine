@@ -12,6 +12,7 @@ import {
   registerAccountCommandSchema,
   selectWorkspaceCommandSchema,
   updateWorkspaceMemberCommandSchema,
+  updateTemplateTagBodyCommandSchema,
   updateNodeCommandSchema,
   updateEffectCommandSchema,
   updateCharacterCommandSchema,
@@ -285,6 +286,14 @@ test("validates workspace member commands", () => {
   assert.throws(() => addWorkspaceMemberCommandSchema.parse({ workspaceId: "workspace_1", identifier: "no", role: "PLAYER" }));
   assert.throws(() => updateWorkspaceMemberCommandSchema.parse({ workspaceId: "", membershipId: "membership_1", role: "GM" }));
   assert.throws(() => removeWorkspaceMemberCommandSchema.parse({ workspaceId: "workspace_1", membershipId: "" }));
+});
+
+test("validates template tag update body without route params", () => {
+  const parsed = updateTemplateTagBodyCommandSchema.parse({ name: "Weapon", color: "red-solid" });
+  assert.equal(parsed.name, "Weapon");
+  assert.equal(parsed.color, "red-solid");
+  assert.throws(() => updateTemplateTagBodyCommandSchema.parse({}));
+  assert.throws(() => updateTemplateTagBodyCommandSchema.parse({ color: "custom-css" }));
 });
 
 test("registration username preserves case while validating allowed characters", () => {

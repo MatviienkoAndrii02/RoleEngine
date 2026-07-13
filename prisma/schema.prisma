@@ -76,6 +76,7 @@ model User {
   createdCharacters    Character[]           @relation("CharacterCreator")
   characterAccess      CharacterAssignment[]
   createdTemplates     EntityTemplate[]      @relation("TemplateCreator")
+  createdTemplateTags  TemplateTag[]         @relation("TemplateTagCreator")
   auditLogs            AuditLog[]            @relation("AuditActor")
   workspaceMemberships WorkspaceMembership[]
   ownedWorkspaces      Workspace[]           @relation("WorkspaceOwner")
@@ -94,6 +95,7 @@ model Workspace {
   memberships WorkspaceMembership[]
   characters  Character[]
   templates   EntityTemplate[]
+  templateTags TemplateTag[]
   auditLogs   AuditLog[]
 
   @@index([ownerId])
@@ -233,10 +235,41 @@ model EntityTemplate {
   nodes     TemplateNode[]
   effects   Effect[]
   slots     TemplateSlot[]
+  tags      EntityTemplateTag[]
 
   @@index([kind, name])
   @@index([isDefaultCharacter])
   @@index([workspaceId, archivedAt])
+}
+
+model TemplateTag {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String    @default("gray-soft")
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
+
+  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  createdBy User?               @relation("TemplateTagCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  templates EntityTemplateTag[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, archivedAt])
+}
+
+model EntityTemplateTag {
+  templateId String
+  tagId      String
+  createdAt  DateTime @default(now())
+
+  template EntityTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  tag      TemplateTag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, tagId])
+  @@index([tagId])
 }
 
 model TemplateSlot {

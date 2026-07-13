@@ -20,7 +20,7 @@ export default async function NewCharacterPage() {
       orderBy: { name: "asc" },
     }),
     prisma.entityTemplate.findMany({
-      where: { kind: "CHARACTER", archivedAt: null, OR: [{ workspaceId: { in: workspaceIds } }, { workspaceId: null, isGlobal: true }] },
+      where: { archivedAt: null, OR: [{ workspaceId: { in: workspaceIds } }, { workspaceId: null, isGlobal: true }] },
       select: { id: true, name: true, isDefaultCharacter: true },
       orderBy: { name: "asc" },
     })

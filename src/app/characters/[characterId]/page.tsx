@@ -93,14 +93,13 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
   const templates = canEdit
     ? await prisma.entityTemplate.findMany({
         where: { archivedAt: null, OR: [{ workspaceId: data.workspaceId }, { workspaceId: null, isGlobal: true }] },
-        select: { id: true, name: true, kind: true, slots: { orderBy: { createdAt: "asc" } } },
-        orderBy: [{ kind: "asc" }, { name: "asc" }]
+        select: { id: true, name: true, slots: { orderBy: { createdAt: "asc" } } },
+        orderBy: [{ name: "asc" }]
       })
     : [];
   const templateOptions = templates.map((template) => ({
     id: template.id,
     name: template.name,
-    kind: template.kind,
     slots: template.slots.map((slot) => ({ ...slot, acceptedTypes: parseAcceptedNodeTypes(slot.acceptedTypes) })),
   }));
   const players = canEdit
