@@ -38,7 +38,6 @@ AUTH_TRUST_HOST=true
 then
 ```bash
 npm install
-cp .env.example .env
 npm run prisma:migrate
 npm run dev
 ```
