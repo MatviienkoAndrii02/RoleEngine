@@ -7,6 +7,7 @@ import { CreateCharacterForm } from "@/components/characters/create-character-fo
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getTranslator } from "@/i18n/server";
+import { parseTemplateTagColor } from "@/domain/template-tags";
 
 export default async function NewCharacterPage() {
   const user = await requirePageGM("/characters/new");
@@ -21,7 +22,7 @@ export default async function NewCharacterPage() {
     }),
     prisma.entityTemplate.findMany({
       where: { archivedAt: null, OR: [{ workspaceId: { in: workspaceIds } }, { workspaceId: null, isGlobal: true }] },
-      select: { id: true, name: true, isDefaultCharacter: true },
+      select: { id: true, name: true, isDefaultCharacter: true, tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } } },
       orderBy: { name: "asc" },
     })
   ]);
@@ -34,7 +35,11 @@ export default async function NewCharacterPage() {
       <CardContent>
         <CreateCharacterForm
           players={players.map((player) => ({ id: player.id, name: player.name ?? player.email }))}
-          templates={templates.map(({ id, name }) => ({ id, name }))}
+          templates={templates.map(({ id, name, tags }) => ({
+            id,
+            name,
+            tags: tags.map((item) => ({ id: item.tag.id, name: item.tag.name, color: parseTemplateTagColor(item.tag.color) })),
+          }))}
           defaultTemplateId={defaultTemplateId}
         />
       </CardContent>

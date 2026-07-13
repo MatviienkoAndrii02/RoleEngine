@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireGM, requirePrimaryWritableWorkspace, requireTemplateGM } from "@/server/authz";
 import { writeAudit } from "@/server/audit";
-import { slugify } from "@/server/template-copy";
+import { copyTemplateIntoTemplate, slugify } from "@/server/template-copy";
 import { parseNodeData } from "@/domain/validation";
 import { parseTemplateTagColor, type TemplateTagColorName } from "@/domain/template-tags";
 import { collectSubtreeIds } from "@/domain/tree";
@@ -335,6 +335,39 @@ export async function unassignTemplateTag(input: { templateId: string; tagId: st
   });
   revalidatePath("/templates");
   revalidatePath(`/templates/${template.id}`);
+}
+
+export async function applyTemplateToTemplate(input: {
+  targetTemplateId: string;
+  sourceTemplateId: string;
+  parentNodeId?: string | null;
+}) {
+  const actor = await requireGM();
+  if (input.targetTemplateId === input.sourceTemplateId) {
+    throw appError("BAD_REQUEST", "Template cannot be copied into itself");
+  }
+  const { template: target } = await requireTemplateGM(input.targetTemplateId);
+  await prisma.entityTemplate.findFirstOrThrow({
+    where: {
+      id: input.sourceTemplateId,
+      archivedAt: null,
+      OR: [{ workspaceId: target.workspaceId }, { workspaceId: null, isGlobal: true }],
+    },
+  });
+  if (input.parentNodeId) {
+    await prisma.templateNode.findFirstOrThrow({ where: { id: input.parentNodeId, templateId: input.targetTemplateId } });
+  }
+  const result = await prisma.$transaction((tx) => copyTemplateIntoTemplate(input, tx));
+  await writeAudit({
+    actorId: actor.id,
+    workspaceId: target.workspaceId,
+    entityType: "EntityTemplate",
+    entityId: input.sourceTemplateId,
+    action: "APPLY_TEMPLATE",
+    newValue: { targetTemplateId: target.id, copiedNodeIds: result.copiedNodeIds, copiedSlotIds: result.copiedSlotIds, parentNodeId: input.parentNodeId },
+  });
+  revalidatePath(`/templates/${target.id}`);
+  return result;
 }
 
 export async function createTemplateSlot(input: {

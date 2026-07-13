@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
+import { TemplateFilterSelect, type TemplatePickerOption } from "@/components/templates/template-filter-select";
 
 type Option = { id: string; name: string };
 
 export function CreateCharacterForm({ players, templates, defaultTemplateId }: {
   players: Option[];
-  templates: Option[];
+  templates: TemplatePickerOption[];
   defaultTemplateId?: string;
 }) {
   const { t } = useI18n();
@@ -48,7 +49,10 @@ export function CreateCharacterForm({ players, templates, defaultTemplateId }: {
       <Field label={t("createCharacter.name")} name="name" required placeholder="Mira Vale" />
       <Field label={t("common.description")} name="description" placeholder={t("createCharacter.descriptionPlaceholder")} />
       <SelectField label={t("createCharacter.assignTo")} name="ownerId" options={players} emptyLabel={t("settings.noPlayer")} />
-      <SelectField label={t("createCharacter.initialStructure")} name="templateId" options={templates} emptyLabel={t("createCharacter.fromScratch")} defaultValue={defaultTemplateId} />
+      <div className="space-y-2">
+        <label className="text-sm font-medium">{t("createCharacter.initialStructure")}</label>
+        <TemplateFilterSelect name="templateId" templates={templates} emptyLabel={t("createCharacter.fromScratch")} defaultValue={defaultTemplateId} />
+      </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button type="submit" disabled={pending}>
         <UserPlus className="h-4 w-4" />

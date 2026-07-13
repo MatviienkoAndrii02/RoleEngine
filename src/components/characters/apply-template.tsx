@@ -7,6 +7,7 @@ import type { CharacterNodeModel } from "@/domain/nodes";
 import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n/client";
+import { TemplateFilterSelect, type TemplatePickerOption } from "@/components/templates/template-filter-select";
 
 export function ApplyTemplate({
   characterId,
@@ -15,7 +16,7 @@ export function ApplyTemplate({
   defaultParentId,
 }: {
   characterId: string;
-  templates: Array<{ id: string; name: string; slots?: TemplateSlotModel[] }>;
+  templates: Array<TemplatePickerOption & { slots?: TemplateSlotModel[] }>;
   nodes: CharacterNodeModel[];
   defaultParentId?: string | null;
 }) {
@@ -56,14 +57,7 @@ export function ApplyTemplate({
 
   return (
     <form action={submit} className="space-y-3">
-      <select name="templateId" required value={templateId} onChange={(event) => setTemplateId(event.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
-        <option value="">{t("template.choose")}</option>
-        {templates.map((template) => (
-          <option key={template.id} value={template.id}>
-            {template.name}
-          </option>
-        ))}
-      </select>
+      <TemplateFilterSelect name="templateId" required value={templateId} onChange={setTemplateId} templates={templates} emptyLabel={t("template.choose")} />
       {selectedTemplate?.slots && selectedTemplate.slots.length > 0 && (
         <div className="space-y-2 rounded-md border p-3">
           <div className="text-sm font-medium">{t("templateSlot.bindings")}</div>

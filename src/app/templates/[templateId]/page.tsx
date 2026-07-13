@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { buildNodeTree } from "@/domain/nodes";
 import { parseAcceptedNodeTypes } from "@/domain/template-slots";
+import { parseTemplateTagColor } from "@/domain/template-tags";
 import { prisma } from "@/lib/prisma";
 import { requirePageGM } from "@/server/page-auth";
 import { requireTemplateGM } from "@/server/authz";
@@ -31,6 +32,18 @@ export default async function TemplatePage({ params }: { params: Promise<{ templ
   const allTags = template.workspaceId
     ? await prisma.templateTag.findMany({ where: { workspaceId: template.workspaceId, archivedAt: null }, orderBy: { name: "asc" } })
     : [];
+  const availableTemplates = await prisma.entityTemplate.findMany({
+    where: {
+      id: { not: template.id },
+      archivedAt: null,
+      OR: [
+        { workspaceId: template.workspaceId },
+        { workspaceId: null, isGlobal: true },
+      ],
+    },
+    include: { tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } } },
+    orderBy: { name: "asc" },
+  });
   const parsedNodes = parseTemplateNodeModels(template.nodes);
   const parsedEffects = parseEffectDefinitions(template.effects);
   const diagnostics = [...parsedNodes.diagnostics, ...parsedEffects.diagnostics];
@@ -39,6 +52,11 @@ export default async function TemplatePage({ params }: { params: Promise<{ templ
   const slots = template.slots.map((slot) => ({ ...slot, acceptedTypes: parseAcceptedNodeTypes(slot.acceptedTypes) }));
   const assignedTags = template.tags.map((item) => ({ id: item.tag.id, name: item.tag.name, color: parseTemplateTagColor(item.tag.color) }));
   const availableTags = allTags.map((tag) => ({ id: tag.id, name: tag.name, color: parseTemplateTagColor(tag.color) }));
+  const templateOptions = availableTemplates.map((item) => ({
+    id: item.id,
+    name: item.name,
+    tags: item.tags.map((tagLink) => ({ id: tagLink.tag.id, name: tagLink.tag.name, color: parseTemplateTagColor(tagLink.tag.color) })),
+  }));
   return <div className="space-y-6">
     <Button asChild variant="ghost"><Link href="/templates"><ArrowLeft className="h-4 w-4" />{t("template.back")}</Link></Button>
     <div><div className="flex items-center gap-2"><h1 className="text-2xl font-semibold">{template.name}</h1>{template.isDefaultCharacter && <Badge className="bg-accent text-accent-foreground">{t("template.defaultCharacter")}</Badge>}</div><p className="text-sm text-muted-foreground">{t("template.editHint")}</p></div>
@@ -67,7 +85,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ templ
           <TemplateTagManager templateId={template.id} assignedTags={assignedTags} allTags={availableTags} />
         </SidebarSection>
         <SidebarSection id="template-node-editor" title={t("character.nodeEditor")}>
-          <NodeEditor templateId={template.id} nodes={nodes} />
+          <NodeEditor templateId={template.id} nodes={nodes} templates={templateOptions} />
         </SidebarSection>
         <SidebarSection id="template-slots" title={t("templateSlot.title")} count={slots.length}>
           <TemplateSlotManager templateId={template.id} slots={slots} />
@@ -114,4 +132,3 @@ function PersistedJsonDiagnostics({
     </div>
   );
 }
-import { parseTemplateTagColor } from "@/domain/template-tags";

@@ -10,7 +10,9 @@ import { Input } from "@/components/ui/input";
 import { TableEditor } from "@/components/characters/table-editor";
 import { NodeIconPicker } from "@/components/characters/node-icons";
 import { ApplyTemplate } from "@/components/characters/apply-template";
+import { ApplyTemplateToTemplate } from "@/components/templates/apply-template-to-template";
 import type { TemplateSlotModel } from "@/domain/template-slots";
+import type { TemplatePickerOption } from "@/components/templates/template-filter-select";
 import { useI18n } from "@/i18n/client";
 
 const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
@@ -24,7 +26,7 @@ export function NodeEditor({
   characterId?: string;
   templateId?: string;
   nodes: CharacterNodeModel[];
-  templates?: Array<{ id: string; name: string; slots?: TemplateSlotModel[] }>;
+  templates?: Array<TemplatePickerOption & { slots?: TemplateSlotModel[] }>;
 }) {
   const router = useRouter();
   const { t } = useI18n();
@@ -112,6 +114,12 @@ export function NodeEditor({
         <div className="space-y-3 border-t pt-4">
           <h4 className="text-sm font-medium">{t("template.addFromTemplate")}</h4>
           <ApplyTemplate characterId={characterId} templates={templates} nodes={nodes} defaultParentId={templateParentId} />
+        </div>
+      )}
+      {templateId && templates.length > 0 && (
+        <div className="space-y-3 border-t pt-4">
+          <h4 className="text-sm font-medium">{t("template.addFromTemplate")}</h4>
+          <ApplyTemplateToTemplate templateId={templateId} templates={templates} nodes={nodes} defaultParentId={templateParentId} />
         </div>
       )}
     </div>

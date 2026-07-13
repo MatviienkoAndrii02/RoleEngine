@@ -308,6 +308,11 @@ export const applyTemplateCommandSchema = z.object({
   bindings: z.record(idSchema, idSchema).optional(),
 }).strict();
 
+export const applyTemplateToTemplateCommandSchema = z.object({
+  sourceTemplateId: idSchema,
+  parentNodeId: idSchema.nullable().optional(),
+}).strict();
+
 export const templateSlotDirectionSchema = z.enum(["INPUT", "OUTPUT", "BIDIRECTIONAL"]);
 
 export const createTemplateSlotCommandSchema = z.object({

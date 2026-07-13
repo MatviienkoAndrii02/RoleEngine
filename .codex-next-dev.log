@@ -1,0 +1,18 @@
+
+> role-engine@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.1.104:3000
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 2.1s
+ ○ Compiling /templates ...
+ ✓ Compiled /templates in 1591ms (902 modules)
+ ✓ Compiled in 126ms (654 modules)
+ GET /templates 307 in 2543ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 730ms (926 modules)
+ GET /login?callbackUrl=%2Ftemplates 200 in 1151ms

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { buildNodeTree, type CharacterNodeModel } from "@/domain/nodes";
 import { removePlayerHiddenSubtrees } from "@/domain/node-visibility";
 import { parseAcceptedNodeTypes } from "@/domain/template-slots";
+import { parseTemplateTagColor } from "@/domain/template-tags";
 import { DependencyEngine, type NodeCalculation } from "@/engine/dependency-engine";
 import { CharacterTree } from "@/components/characters/character-tree";
 import { NodeEditor } from "@/components/characters/node-editor";
@@ -93,13 +94,14 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
   const templates = canEdit
     ? await prisma.entityTemplate.findMany({
         where: { archivedAt: null, OR: [{ workspaceId: data.workspaceId }, { workspaceId: null, isGlobal: true }] },
-        select: { id: true, name: true, slots: { orderBy: { createdAt: "asc" } } },
+        select: { id: true, name: true, slots: { orderBy: { createdAt: "asc" } }, tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } } },
         orderBy: [{ name: "asc" }]
       })
     : [];
   const templateOptions = templates.map((template) => ({
     id: template.id,
     name: template.name,
+    tags: template.tags.map((item) => ({ id: item.tag.id, name: item.tag.name, color: parseTemplateTagColor(item.tag.color) })),
     slots: template.slots.map((slot) => ({ ...slot, acceptedTypes: parseAcceptedNodeTypes(slot.acceptedTypes) })),
   }));
   const players = canEdit

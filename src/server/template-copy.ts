@@ -77,6 +77,112 @@ export async function copyTemplateIntoCharacter(input: {
   return { copiedNodeIds: [...idMap.values()] };
 }
 
+export async function copyTemplateIntoTemplate(input: {
+  sourceTemplateId: string;
+  targetTemplateId: string;
+  parentNodeId?: string | null;
+}, db: DbClient = prisma) {
+  if (input.sourceTemplateId === input.targetTemplateId) throw new Error("Template cannot be copied into itself");
+  const [source, target] = await Promise.all([
+    db.entityTemplate.findUnique({
+      where: { id: input.sourceTemplateId },
+      include: {
+        nodes: { orderBy: [{ parentId: "asc" }, { order: "asc" }] },
+        effects: true,
+        slots: true,
+      },
+    }),
+    db.entityTemplate.findUnique({
+      where: { id: input.targetTemplateId },
+      include: { slots: true },
+    }),
+  ]);
+  if (!source || !target) throw new Error("Template not found");
+
+  const idMap: NodeIdMap = new Map();
+  const slotMap = await copyTemplateSlotsIntoTemplate(source.slots, target.id, target.slots, db);
+  const nodesByParent = groupByParent(source.nodes);
+  const parentPath = input.parentNodeId
+    ? (await db.templateNode.findFirstOrThrow({ where: { id: input.parentNodeId, templateId: input.targetTemplateId } })).path
+    : "";
+
+  const copyChildren = async (parentSourceId: string | null, parentTargetId: string | null, parentPathValue: string) => {
+    for (const sourceNode of nodesByParent.get(parentSourceId) ?? []) {
+      const path = parentPathValue ? `${parentPathValue}/${slugify(sourceNode.name)}` : slugify(sourceNode.name);
+      const created = await db.templateNode.create({
+        data: {
+          templateId: input.targetTemplateId,
+          parentId: parentTargetId,
+          type: sourceNode.type,
+          name: sourceNode.name,
+          slug: sourceNode.slug,
+          path,
+          order: sourceNode.order,
+          data: sourceNode.data as Prisma.InputJsonValue,
+        },
+      });
+      idMap.set(sourceNode.id, created.id);
+      await copyChildren(sourceNode.id, created.id, path);
+    }
+  };
+
+  await copyChildren(null, input.parentNodeId ?? null, parentPath);
+
+  for (const effect of source.effects) {
+    await db.effect.create({
+      data: {
+        name: effect.name,
+        enabled: effect.enabled,
+        operation: effect.operation,
+        priority: effect.priority,
+        templateId: input.targetTemplateId,
+        sourceTemplateNodeId: effect.sourceTemplateNodeId ? idMap.get(effect.sourceTemplateNodeId) : null,
+        condition: remapTemplateEffectJsonForTemplate(effect.condition, idMap, slotMap),
+        target: remapTemplateEffectJsonForTemplate(effect.target, idMap, slotMap),
+        source: remapTemplateEffectJsonForTemplate(effect.source, idMap, slotMap),
+        payload: remapTemplateEffectJsonForTemplate(effect.payload, idMap, slotMap),
+      },
+    });
+  }
+
+  return { copiedNodeIds: [...idMap.values()], copiedSlotIds: [...slotMap.values()] };
+}
+
+async function copyTemplateSlotsIntoTemplate(
+  sourceSlots: TemplateSlot[],
+  targetTemplateId: string,
+  existingTargetSlots: TemplateSlot[],
+  db: DbClient,
+): Promise<SlotBindingMap> {
+  const result = new Map<string, string>();
+  const usedKeys = new Set(existingTargetSlots.map((slot) => slot.key));
+  for (const sourceSlot of sourceSlots) {
+    const key = nextAvailableSlotKey(sourceSlot.key, usedKeys);
+    usedKeys.add(key);
+    const created = await db.templateSlot.create({
+      data: {
+        templateId: targetTemplateId,
+        key,
+        label: sourceSlot.label,
+        description: sourceSlot.description,
+        direction: sourceSlot.direction,
+        acceptedTypes: sourceSlot.acceptedTypes as Prisma.InputJsonValue,
+        required: sourceSlot.required,
+      },
+    });
+    result.set(sourceSlot.id, created.id);
+  }
+  return result;
+}
+
+function nextAvailableSlotKey(baseKey: string, usedKeys: Set<string>) {
+  if (!usedKeys.has(baseKey)) return baseKey;
+  for (let index = 2; ; index += 1) {
+    const candidate = `${baseKey}_${index}`;
+    if (!usedKeys.has(candidate)) return candidate;
+  }
+}
+
 function groupByParent(nodes: TemplateNode[]) {
   const map = new Map<string | null, TemplateNode[]>();
   for (const node of nodes) {
@@ -166,6 +272,28 @@ export function remapTemplateEffectJson(value: unknown, idMap: ReadonlyMap<strin
           return [key, idMap.get(item) ?? item];
         }
         return [key, remapTemplateEffectJson(item, idMap, slotBindings)];
+      })
+    );
+  }
+  return value as Prisma.InputJsonValue;
+}
+
+export function remapTemplateEffectJsonForTemplate(value: unknown, idMap: ReadonlyMap<string, string>, slotMap: ReadonlyMap<string, string> = new Map()): Prisma.InputJsonValue {
+  if (Array.isArray(value)) return value.map((item) => remapTemplateEffectJsonForTemplate(item, idMap, slotMap));
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if ((record.kind === "templateSlot" || record.kind === "slotRef" || record.kind === "slotExists" || record.kind === "compareSlot") && typeof record.slotId === "string") {
+      return {
+        ...Object.fromEntries(Object.entries(record).filter(([key]) => key !== "slotId")),
+        slotId: slotMap.get(record.slotId) ?? record.slotId,
+      };
+    }
+    return Object.fromEntries(
+      Object.entries(record).map(([key, item]) => {
+        if ((key === "nodeId" || key === "parentNodeId") && typeof item === "string") {
+          return [key, idMap.get(item) ?? item];
+        }
+        return [key, remapTemplateEffectJsonForTemplate(item, idMap, slotMap)];
       })
     );
   }
