@@ -25,7 +25,7 @@ export function getNumericPatchFields(type: NodeType): PatchFieldDefinition[] {
 
   if (type === "BAR") {
     return [
-      { field: "current", labelKey: "node.current", kind: "number", derived: true },
+      { field: "value", labelKey: "common.value", kind: "number", derived: true },
       { field: "min", labelKey: "node.minimum", kind: "number", derived: true },
       { field: "max", labelKey: "node.maximum", kind: "number", derived: true },
     ];

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Pencil, Plus, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil, Play, Plus, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { NodeTreeItem } from "@/domain/nodes";
 import { templateTagColorLineClass } from "@/domain/template-tags";
 import { useCharacterUiStore } from "@/store/character-ui-store";
@@ -11,9 +12,16 @@ import { cn } from "@/lib/utils";
 import { NodeValue } from "@/components/characters/node-value";
 import { TablePreview } from "@/components/characters/table-editor";
 import { getNodeIconComponent } from "@/components/characters/node-icons";
+import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 
-export function CharacterTree({ nodes, editorSectionId = "node-editor", searchable = false }: { nodes: NodeTreeItem[]; editorSectionId?: string; searchable?: boolean }) {
+type ManualTrigger = {
+  effectId: string;
+  nodeId: string;
+  name: string;
+};
+
+export function CharacterTree({ nodes, editorSectionId = "node-editor", searchable = false, manualTriggers = [] }: { nodes: NodeTreeItem[]; editorSectionId?: string; searchable?: boolean; manualTriggers?: ManualTrigger[] }) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const nodePickRequest = useCharacterUiStore((state) => state.nodePickRequest);
@@ -47,7 +55,7 @@ export function CharacterTree({ nodes, editorSectionId = "node-editor", searchab
       ) : (
         <div className="space-y-1">
           {visibleNodes.map((node) => (
-            <TreeRow key={node.id} node={node} depth={0} editorSectionId={editorSectionId} forceExpanded={Boolean(normalizedQuery)} />
+            <TreeRow key={node.id} node={node} depth={0} editorSectionId={editorSectionId} forceExpanded={Boolean(normalizedQuery)} manualTriggers={manualTriggers} />
           ))}
         </div>
       )}
@@ -55,8 +63,9 @@ export function CharacterTree({ nodes, editorSectionId = "node-editor", searchab
   );
 }
 
-function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTreeItem; depth: number; editorSectionId: string; forceExpanded: boolean }) {
+function TreeRow({ node, depth, editorSectionId, forceExpanded, manualTriggers }: { node: NodeTreeItem; depth: number; editorSectionId: string; forceExpanded: boolean; manualTriggers: ManualTrigger[] }) {
   const { t } = useI18n();
+  const router = useRouter();
   const { collapsedNodeIds, expandedNodeIds, selectedNodeId, nodePickRequest, toggleNode, completeNodePick, selectNode, setEditorMode, openSidebarSection } = useCharacterUiStore();
   const collapsedByDefault = Boolean(node.data.collapsedByDefault);
   const collapsed = !forceExpanded && (collapsedByDefault ? !expandedNodeIds.has(node.id) : collapsedNodeIds.has(node.id));
@@ -65,8 +74,27 @@ function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTr
   const Icon = getNodeIconComponent(node.data.icon, node.type);
   const [textExpanded, setTextExpanded] = useState(false);
   const [tableExpanded, setTableExpanded] = useState(false);
+  const [runningEffectId, setRunningEffectId] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
   const pickAllowed = !nodePickRequest?.allowedTypes?.length || nodePickRequest.allowedTypes.includes(node.type);
   const accentColor = typeof node.data.accentColor === "string" ? node.data.accentColor : null;
+  const nodeTriggers = manualTriggers.filter((trigger) => trigger.nodeId === node.id);
+
+  async function runTrigger(trigger: ManualTrigger) {
+    setRunningEffectId(trigger.effectId);
+    setRunError(null);
+    const response = await fetch(`/api/effects/${trigger.effectId}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodeId: node.id }),
+    });
+    setRunningEffectId(null);
+    if (!response.ok) {
+      setRunError(await localizedApiError(response, t, "effect.runFailed"));
+      return;
+    }
+    router.refresh();
+  }
 
   return (
     <div>
@@ -116,6 +144,24 @@ function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTr
         />
         {selected && !nodePickRequest && (
           <div className="flex items-center gap-1">
+            {nodeTriggers.map((trigger) => (
+              <Button
+                key={trigger.effectId}
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-primary"
+                title={t("effect.runNamed", { name: trigger.name })}
+                aria-label={t("effect.runNamed", { name: trigger.name })}
+                disabled={runningEffectId === trigger.effectId}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void runTrigger(trigger);
+                }}
+              >
+                <Play className="h-4 w-4" />
+              </Button>
+            ))}
             <Button
               type="button"
               size="icon"
@@ -159,13 +205,14 @@ function TreeRow({ node, depth, editorSectionId, forceExpanded }: { node: NodeTr
           {node.data.text}
         </div>
       )}
+      {runError && <div className="mb-2 mr-3 text-xs text-destructive" style={{ marginLeft: `${depth * 18 + 44}px` }}>{runError}</div>}
       {node.type === "TABLE" && "columns" in node.data && "rows" in node.data && tableExpanded && (
         <div className="mb-2 mr-3" style={{ marginLeft: `${depth * 18 + 44}px` }}>
           <TablePreview data={node.data} />
         </div>
       )}
       {!collapsed &&
-        node.children.map((child) => <TreeRow key={child.id} node={child} depth={depth + 1} editorSectionId={editorSectionId} forceExpanded={forceExpanded} />)}
+        node.children.map((child) => <TreeRow key={child.id} node={child} depth={depth + 1} editorSectionId={editorSectionId} forceExpanded={forceExpanded} manualTriggers={manualTriggers} />)}
     </div>
   );
 }

@@ -6,8 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { requireCharacterGM, requireGM, requireTemplateGM } from "@/server/authz";
 import { DependencyEngine } from "@/engine/dependency-engine";
 import type { EffectCondition, EffectDefinition, EffectSource } from "@/domain/effects";
-import type { CreateNodePayload } from "@/domain/effects";
+import type { CreateNodePayload, TriggeredEffectAction, TriggeredEffectTrigger } from "@/domain/effects";
 import { reconcileStructuralEffects } from "@/server/structural-effects";
+import { runManualTriggeredEffect, runTriggeredCharacterEffects } from "@/server/triggered-effects";
 import { parseCharacterNodeModels, parseEffectDefinitions, parseTemplateNodeModels } from "@/server/read-models";
 
 const numericOperations: EffectOperation[] = ["ADD", "SUBTRACT", "MULTIPLY", "PERCENT_BONUS", "SET_BAR_MAX"];
@@ -31,6 +32,7 @@ export async function createNumericEffect(input: { characterId: string; name: st
   if (check.cycles.length) throw new Error("Effect creates a dependency cycle");
   const effect = await prisma.effect.create({ data: { name, operation: input.operation, priority: effects.length, characterId: input.characterId, condition: input.condition as Prisma.InputJsonValue, target: candidate.target as Prisma.InputJsonValue, source: input.source as Prisma.InputJsonValue, payload: candidate.payload as Prisma.InputJsonValue } });
   await syncGraph(input.characterId);
+  await stabilizeCharacterEffects(input.characterId, actor.id);
   await prisma.auditLog.create({ data: { actorId: actor.id, workspaceId: character.workspaceId, characterId: input.characterId, entityType: "Effect", entityId: effect.id, action: "CREATE", newValue: { name, operation: input.operation, targetNodeId: input.targetNodeId } } });
   revalidatePath(`/characters/${input.characterId}`);
   return effect;
@@ -50,8 +52,33 @@ export async function createStructuralEffect(input: { characterId: string; name:
     ? { kind: "node", nodeId: target.id }
     : { kind: "root" };
   const effect = await prisma.effect.create({ data: { name: input.name.trim(), operation: input.operation, priority: count, characterId: input.characterId, condition: input.condition as Prisma.InputJsonValue, target: effectTarget, source: (input.source ?? { kind: "number", value: 0 }) as Prisma.InputJsonValue, payload: payload as Prisma.InputJsonValue } });
-  try { await reconcileStructuralEffects(input.characterId); } catch (error) { await prisma.effect.delete({ where: { id: effect.id } }); throw error; }
+  try { await stabilizeCharacterEffects(input.characterId, actor.id); } catch (error) { await prisma.effect.delete({ where: { id: effect.id } }); throw error; }
   await prisma.auditLog.create({ data: { actorId: actor.id, workspaceId: character.workspaceId, characterId: input.characterId, entityType: "Effect", entityId: effect.id, action: "CREATE", newValue: { name: effect.name, operation: effect.operation } } });
+  revalidatePath(`/characters/${input.characterId}`);
+  return effect;
+}
+
+export async function createTriggeredEffect(input: { characterId: string; name: string; trigger: TriggeredEffectTrigger; actions: TriggeredEffectAction[] }) {
+  const actor = await requireGM();
+  const { character } = await requireCharacterGM(input.characterId);
+  const name = input.name.trim();
+  if (!name) throw new Error("Effect name is required");
+  if (!input.actions.length) throw new Error("Triggered effect needs at least one action");
+  const count = await prisma.effect.count({ where: { characterId: input.characterId } });
+  const effect = await prisma.effect.create({
+    data: {
+      name,
+      operation: "TRIGGERED",
+      priority: count,
+      characterId: input.characterId,
+      condition: { kind: "always" },
+      target: { kind: "root" },
+      source: { kind: "number", value: 0 },
+      payload: { triggered: { trigger: input.trigger, actions: input.actions } } as Prisma.InputJsonValue,
+    },
+  });
+  await stabilizeCharacterEffects(input.characterId, actor.id);
+  await prisma.auditLog.create({ data: { actorId: actor.id, workspaceId: character.workspaceId, characterId: input.characterId, entityType: "Effect", entityId: effect.id, action: "CREATE", newValue: { name, operation: "TRIGGERED", actions: input.actions.length } } });
   revalidatePath(`/characters/${input.characterId}`);
   return effect;
 }
@@ -98,16 +125,70 @@ export async function createTemplateStructuralEffect(input: { templateId: string
   return effect;
 }
 
+export async function createTemplateTriggeredEffect(input: { templateId: string; name: string; trigger: TriggeredEffectTrigger; actions: TriggeredEffectAction[] }) {
+  const actor = await requireGM();
+  const { template } = await requireTemplateGM(input.templateId);
+  const name = input.name.trim();
+  if (!name) throw new Error("Effect name is required");
+  if (!input.actions.length) throw new Error("Triggered effect needs at least one action");
+  const count = await prisma.effect.count({ where: { templateId: input.templateId } });
+  const effect = await prisma.effect.create({
+    data: {
+      name,
+      operation: "TRIGGERED",
+      priority: count,
+      templateId: input.templateId,
+      condition: { kind: "always" },
+      target: { kind: "root" },
+      source: { kind: "number", value: 0 },
+      payload: { triggered: { trigger: input.trigger, actions: input.actions } } as Prisma.InputJsonValue,
+    },
+  });
+  await prisma.auditLog.create({ data: { actorId: actor.id, workspaceId: template.workspaceId, entityType: "Effect", entityId: effect.id, action: "CREATE", newValue: { templateId: input.templateId, name, operation: "TRIGGERED", actions: input.actions.length } } });
+  revalidatePath(`/templates/${input.templateId}`);
+  return effect;
+}
+
 export async function deleteEffect(effectId: string) {
   const actor = await requireGM();
   const effect = await prisma.effect.findUniqueOrThrow({ where: { id: effectId } });
   const workspaceId = await requireEffectWritableWorkspace(effect);
   await prisma.effect.delete({ where: { id: effectId } });
-  if (effect.characterId) await reconcileStructuralEffects(effect.characterId);
   if (effect.characterId) await syncGraph(effect.characterId);
+  if (effect.characterId) await stabilizeCharacterEffects(effect.characterId, actor.id);
   await prisma.auditLog.create({ data: { actorId: actor.id, workspaceId, characterId: effect.characterId, entityType: "Effect", entityId: effect.id, action: "DELETE", oldValue: { name: effect.name, operation: effect.operation } } });
   if (effect.characterId) revalidatePath(`/characters/${effect.characterId}`);
   if (effect.templateId) revalidatePath(`/templates/${effect.templateId}`);
+}
+
+export async function runTriggeredEffect(input: { effectId: string; nodeId: string }) {
+  const actor = await requireGM();
+  const effect = await prisma.effect.findUniqueOrThrow({ where: { id: input.effectId } });
+  const workspaceId = await requireEffectWritableWorkspace(effect);
+  if (!effect.characterId) throw new Error("Triggered effect must belong to a character");
+  const node = await prisma.characterNode.findFirstOrThrow({ where: { id: input.nodeId, characterId: effect.characterId, archivedAt: null } });
+  const result = await runManualTriggeredEffect(effect.id, actor.id, node.id);
+  await syncGraph(effect.characterId);
+  await reconcileStructuralEffects(effect.characterId);
+  await prisma.auditLog.create({
+    data: {
+      actorId: actor.id,
+      workspaceId,
+      characterId: effect.characterId,
+      entityType: "Effect",
+      entityId: effect.id,
+      action: "RECALCULATE",
+      newValue: { manualTrigger: true, nodeId: node.id, effectName: effect.name, ...result },
+    },
+  });
+  revalidatePath(`/characters/${effect.characterId}`);
+  return result;
+}
+
+async function stabilizeCharacterEffects(characterId: string, actorId: string) {
+  await reconcileStructuralEffects(characterId);
+  await runTriggeredCharacterEffects(characterId, actorId);
+  await reconcileStructuralEffects(characterId);
 }
 
 export async function updateEffect(effectId: string, input: {
@@ -122,6 +203,8 @@ export async function updateEffect(effectId: string, input: {
   createNode?: CreateNodePayload;
   patch?: Record<string, unknown>;
   patchFromSource?: { field: string };
+  trigger?: TriggeredEffectTrigger;
+  actions?: TriggeredEffectAction[];
 }) {
   const actor = await requireGM();
   const current = await prisma.effect.findUniqueOrThrow({ where: { id: effectId } });
@@ -148,7 +231,16 @@ export async function updateEffect(effectId: string, input: {
         ? await resolveTemplateStructuralTarget(current.templateId, input.targetNodeId)
         : nodes.find((node) => node.id === input.targetNodeId) ?? null
       : null;
-    if (numericOperations.includes(operation)) {
+    if (operation === "TRIGGERED") {
+      if (!input.trigger || !input.actions?.length) throw new Error("Triggered effect needs a trigger and at least one action");
+      replacement = {
+        operation,
+        target: { kind: "root" },
+        source: { kind: "number", value: 0 },
+        condition: { kind: "always" },
+        payload: { triggered: { trigger: input.trigger, actions: input.actions } } as Prisma.InputJsonValue,
+      };
+    } else if (numericOperations.includes(operation)) {
       const numericTarget = input.targetNodeId && current.templateId
         ? await resolveTemplateTargetRef(current.templateId, input.targetNodeId, ["NUMBER", "BAR"])
         : target && "type" in target && ["NUMBER", "BAR"].includes(target.type)
@@ -200,7 +292,7 @@ export async function updateEffect(effectId: string, input: {
   try {
     if (current.characterId) {
       await syncGraph(current.characterId);
-      await reconcileStructuralEffects(current.characterId);
+      await stabilizeCharacterEffects(current.characterId, actor.id);
     } else if (current.templateId) {
       await validateTemplateEffectGraph(current.templateId);
     }

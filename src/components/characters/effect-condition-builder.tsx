@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { EffectCondition } from "@/domain/effects";
+import type { EffectCondition, EffectSource } from "@/domain/effects";
 import type { CharacterNodeModel } from "@/domain/nodes";
 import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Input } from "@/components/ui/input";
@@ -75,11 +75,29 @@ function ConditionFields({
   slotOptions: Array<{ value: string; label: string }>;
 }) {
   const { t } = useI18n();
+  const [valueKind, setValueKind] = useState<"number" | "node">("number");
   if (kind === "always") return null;
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <NodePicker name={`${prefix}NodeId`} nodes={nodes} extraOptions={slotOptions} placeholder={t("effect.selectNode")} />
-      {kind !== "exists" && <Input name={`${prefix}Value`} type="number" step="any" required placeholder={t("common.value")} />}
+    <div className="space-y-2">
+      <NodePicker name={`${prefix}NodeId`} nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} />
+      {kind !== "exists" && (
+        <div className="space-y-2 rounded-md border bg-muted/20 p-2">
+          <select name={`${prefix}ValueKind`} value={valueKind} onChange={(event) => setValueKind(event.target.value as "number" | "node")} className={selectClass}>
+            <option value="number">{t("effect.sourceNumber")}</option>
+            <option value="node">{t("effect.sourceNode")}</option>
+          </select>
+          {valueKind === "number" ? (
+            <Input name={`${prefix}Value`} type="number" step="any" required placeholder={t("common.value")} />
+          ) : (
+            <div className="space-y-2">
+              <NodePicker name={`${prefix}ValueNodeId`} nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} />
+              <select name={`${prefix}ValueField`} defaultValue="value" className={selectClass}>
+                {numericFields.map((field) => <option key={field} value={field}>{fieldLabel(field, t)}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -95,15 +113,33 @@ function readConditionLeaf(data: FormData, prefix: string): EffectCondition {
       kind: "compareSlot",
       slotId: parsed.id,
       operator: kind as "gt" | "lt" | "eq",
-      value: { kind: "number", value: Number(data.get(`${prefix}Value`)) },
+      value: readCompareSource(data, prefix),
     };
   }
   return {
     kind: "compare",
     nodeId: parsed.id,
     operator: kind as "gt" | "lt" | "eq",
-    value: { kind: "number", value: Number(data.get(`${prefix}Value`)) },
+    value: readCompareSource(data, prefix),
   };
+}
+
+const numericFields = ["value", "min", "max"] as const;
+
+function readCompareSource(data: FormData, prefix: string): EffectSource {
+  const kind = String(data.get(`${prefix}ValueKind`) || "number");
+  if (kind === "number") return { kind: "number", value: Number(data.get(`${prefix}Value`)) };
+  const value = String(data.get(`${prefix}ValueNodeId`) ?? "");
+  const field = String(data.get(`${prefix}ValueField`) || "value") as "value" | "current" | "min" | "max";
+  const parsed = parseTemplateSelectValue(value);
+  if (parsed.kind === "slot") return { kind: "templateSlot", slotId: parsed.id, field };
+  return { kind: "node", nodeId: parsed.id, field };
+}
+
+function fieldLabel(field: (typeof numericFields)[number], t: ReturnType<typeof useI18n>["t"]) {
+  if (field === "min") return t("node.minimum");
+  if (field === "max") return t("node.maximum");
+  return t("common.value");
 }
 
 function parseTemplateSelectValue(value: string) {

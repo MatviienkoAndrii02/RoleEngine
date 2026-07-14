@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createTemplateNumericEffect, createTemplateStructuralEffect } from "@/server/actions/effects";
+import { createTemplateNumericEffect, createTemplateStructuralEffect, createTemplateTriggeredEffect } from "@/server/actions/effects";
 import { createEffectCommandSchema } from "@/domain/validation";
 import { inputErrorResponse, parseJson } from "@/server/api-validation";
 
@@ -8,6 +8,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tem
     const { templateId } = await params;
     const body = await parseJson(request, createEffectCommandSchema);
     switch (body.operation) {
+      case "TRIGGERED":
+        return NextResponse.json(await createTemplateTriggeredEffect({ templateId, ...body }), { status: 201 });
       case "CREATE_NODE":
       case "CREATE_GROUP":
       case "PATCH_NODE_PROPS":

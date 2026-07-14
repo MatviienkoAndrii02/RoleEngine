@@ -7,6 +7,7 @@ import { requireCharacterGM, requireGM, requirePrimaryWritableWorkspace } from "
 import { writeAudit } from "@/server/audit";
 import { copyTemplateIntoCharacter, slugify } from "@/server/template-copy";
 import { reconcileStructuralEffects } from "@/server/structural-effects";
+import { runTriggeredCharacterEffects } from "@/server/triggered-effects";
 import { parseNodeData } from "@/domain/validation";
 import { collectSubtreeIds } from "@/domain/tree";
 import { appError } from "@/server/errors";
@@ -69,7 +70,7 @@ export async function createCharacter(input: {
     return created;
   });
 
-  await reconcileStructuralEffects(character.id);
+  await stabilizeCharacterEffects(character.id, actor.id);
   revalidatePath("/");
   return character;
 }
@@ -289,7 +290,7 @@ export async function createCharacterNode(input: {
   });
 
   revalidatePath(`/characters/${input.characterId}`);
-  await reconcileStructuralEffects(input.characterId);
+  await stabilizeCharacterEffects(input.characterId, actor.id);
   return node;
 }
 
@@ -360,7 +361,7 @@ export async function updateCharacterNode(input: {
   });
 
   revalidatePath(`/characters/${current.characterId}`);
-  await reconcileStructuralEffects(current.characterId);
+  await stabilizeCharacterEffects(current.characterId, actor.id);
   return node;
 }
 
@@ -394,7 +395,7 @@ export async function deleteCharacterNode(input: { characterId: string; nodeId: 
     });
   });
   revalidatePath(`/characters/${current.characterId}`);
-  await reconcileStructuralEffects(current.characterId);
+  await stabilizeCharacterEffects(current.characterId, actor.id);
 }
 
 export async function restoreCharacterNode(input: { characterId: string; nodeId: string }) {
@@ -435,7 +436,7 @@ export async function restoreCharacterNode(input: { characterId: string; nodeId:
 
   revalidatePath("/");
   revalidatePath(`/characters/${input.characterId}`);
-  await reconcileStructuralEffects(input.characterId);
+  await stabilizeCharacterEffects(input.characterId, actor.id);
 }
 
 export async function applyTemplateToCharacter(input: {
@@ -463,7 +464,7 @@ export async function applyTemplateToCharacter(input: {
     if (check.cycles.length) throw appError("DEPENDENCY_CYCLE", "Template bindings create a dependency cycle");
     return copied;
   });
-  await reconcileStructuralEffects(input.characterId);
+  await stabilizeCharacterEffects(input.characterId, actor.id);
 
   await writeAudit({
     actorId: actor.id,
@@ -477,4 +478,10 @@ export async function applyTemplateToCharacter(input: {
 
   revalidatePath(`/characters/${input.characterId}`);
   return result;
+}
+
+async function stabilizeCharacterEffects(characterId: string, actorId: string) {
+  await reconcileStructuralEffects(characterId);
+  await runTriggeredCharacterEffects(characterId, actorId);
+  await reconcileStructuralEffects(characterId);
 }

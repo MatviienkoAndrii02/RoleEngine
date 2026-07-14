@@ -246,7 +246,11 @@ export class DependencyEngine {
       if (effect.payload.patchFromSource?.field) {
         const amount = evaluateSource(effect.source, ctx);
         if (amount == null) continue;
-        patch[effect.payload.patchFromSource.field] = amount;
+        const target = this.nodes.get(targetNodeId);
+        const field = target?.type === "BAR" && effect.payload.patchFromSource.field === "value"
+          ? "current"
+          : effect.payload.patchFromSource.field;
+        patch[field] = amount;
       }
       requests.push({ targetNodeId, effectId: effect.id, effectName: effect.name, patch });
     }

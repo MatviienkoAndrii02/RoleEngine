@@ -13,6 +13,7 @@ import { CharacterTree } from "@/components/characters/character-tree";
 import { NodeEditor } from "@/components/characters/node-editor";
 import { NumericEffectBuilder } from "@/components/characters/numeric-effect-builder";
 import { StructuralEffectBuilder } from "@/components/characters/structural-effect-builder";
+import { TriggeredEffectBuilder } from "@/components/characters/triggered-effect-builder";
 import { EffectManager } from "@/components/characters/effect-manager";
 import { SidebarSection } from "@/components/characters/sidebar-section";
 import { TemplateForm } from "@/components/templates/template-form";
@@ -97,6 +98,9 @@ export default async function TemplatePage({ params }: { params: Promise<{ templ
         </SidebarSection>
         <SidebarSection id="template-structural-effects" title={t("character.structuralEffects")}>
           <StructuralEffectBuilder templateId={template.id} nodes={nodes} slots={slots} />
+        </SidebarSection>
+        <SidebarSection id="template-triggered-effects" title={t("character.triggeredEffects")}>
+          <TriggeredEffectBuilder templateId={template.id} nodes={nodes} slots={slots} />
         </SidebarSection>
         <SidebarSection id="template-effect-manager" title={t("template.effects")} count={effects.length}>
           <EffectManager nodes={nodes} effects={effects} title={t("template.effects")} rootLabel={t("common.rootTemplate")} slots={slots} />

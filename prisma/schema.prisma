@@ -48,6 +48,7 @@ enum EffectOperation {
   CREATE_GROUP
   SET_BAR_MAX
   PATCH_NODE_PROPS
+  TRIGGERED
 }
 
 enum AuditAction {

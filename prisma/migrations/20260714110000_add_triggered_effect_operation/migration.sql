@@ -1,0 +1,1 @@
+ALTER TYPE "EffectOperation" ADD VALUE 'TRIGGERED';

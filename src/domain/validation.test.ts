@@ -176,6 +176,7 @@ test("accepts a structural effect targeting the character root", () => {
     condition: { kind: "always" },
     createNode: { type: "GROUP", name: "Root group", data: {} },
   });
+  assert.equal(result.operation, "CREATE_GROUP");
   assert.equal(result.targetNodeId, null);
 });
 
@@ -252,6 +253,76 @@ test("accepts dynamic structural patch with complex conditions", () => {
   });
   assert.equal(result.operation, "PATCH_NODE_PROPS");
   assert.equal(result.condition.kind, "and");
+});
+
+test("accepts triggered effects with multiple actions", () => {
+  const result = createEffectCommandSchema.parse({
+    name: "Level up",
+    operation: "TRIGGERED",
+    trigger: {
+      kind: "condition",
+      condition: {
+        kind: "compare",
+        nodeId: "xp",
+        operator: "gt",
+        value: { kind: "node", nodeId: "xp", field: "max" },
+      },
+    },
+    actions: [
+      {
+        kind: "NUMERIC",
+        targetNodeId: "stat",
+        field: "value",
+        operation: "ADD",
+        source: { kind: "number", value: 1 },
+      },
+      {
+        kind: "NUMERIC",
+        targetNodeId: "xp",
+        field: "current",
+        operation: "SET",
+        source: {
+          kind: "formula",
+          expression: {
+            kind: "subtract",
+            left: { kind: "ref", nodeId: "xp", field: "current" },
+            right: { kind: "ref", nodeId: "xp", field: "max" },
+          },
+        },
+      },
+    ],
+  });
+  assert.equal(result.operation, "TRIGGERED");
+  assert.equal(result.actions.length, 2);
+});
+
+test("accepts node click triggered effects", () => {
+  const result = createEffectCommandSchema.parse({
+    name: "Spend charge",
+    operation: "TRIGGERED",
+    trigger: {
+      kind: "nodeClick",
+      nodeId: "charge-button",
+      condition: {
+        kind: "compare",
+        nodeId: "charges",
+        operator: "gt",
+        value: { kind: "number", value: 0 },
+      },
+    },
+    actions: [
+      {
+        kind: "NUMERIC",
+        targetNodeId: "charges",
+        field: "value",
+        operation: "SUBTRACT",
+        source: { kind: "number", value: 1 },
+      },
+    ],
+  });
+  assert.equal(result.operation, "TRIGGERED");
+  assert.equal(result.trigger.kind, "nodeClick");
+  assert.equal(result.trigger.nodeId, "charge-button");
 });
 
 test("accepts a full effect replacement", () => {

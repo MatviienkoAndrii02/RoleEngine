@@ -10,6 +10,7 @@ import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
+import { FormulaSourceFields, readFormulaExpression } from "@/components/characters/formula-source-fields";
 import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
 import { NodeIconPicker } from "@/components/characters/node-icons";
 import { NodePicker } from "@/components/characters/node-picker";
@@ -257,11 +258,7 @@ function SourceFields({ nodes, slots, kind, setKind }: { nodes: CharacterNodeMod
       ) : kind === "node" ? (
         <NodePicker name="sourceNodeId" nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} />
       ) : (
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_100px] gap-2">
-          <NodePicker name="formulaNodeId" nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} />
-          <select name="formulaOperator" className={selectClass}><option value="add">+</option><option value="subtract">-</option><option value="multiply">x</option><option value="divide">/</option></select>
-          <Input name="formulaValue" type="number" step="any" required defaultValue={10} />
-        </div>
+        <FormulaSourceFields nodes={nodes} slots={slots} />
       )}
     </div>
   );
@@ -295,7 +292,7 @@ function readSource(kind: string, data: FormData): EffectSource {
   if (kind === "node") return readNodeOrSlotSource(String(data.get("sourceNodeId")));
   return {
     kind: "formula",
-    expression: readNodeOrSlotFormulaRef(String(data.get("formulaNodeId")), String(data.get("formulaOperator")), Number(data.get("formulaValue"))),
+    expression: readFormulaExpression(data),
   };
 }
 
@@ -317,15 +314,4 @@ function readNodeOrSlotSource(value: string): EffectSource {
   const parsed = parseTemplateSelectValue(value);
   if (parsed.kind === "slot") return { kind: "templateSlot", slotId: parsed.id, field: "value" };
   return { kind: "node", nodeId: parsed.id, field: "value" };
-}
-
-function readNodeOrSlotFormulaRef(value: string, operator: string, amount: number) {
-  const parsed = parseTemplateSelectValue(value);
-  return {
-    kind: operator as "add" | "subtract" | "multiply" | "divide",
-    left: parsed.kind === "slot"
-      ? { kind: "slotRef" as const, slotId: parsed.id, field: "value" as const }
-      : { kind: "ref" as const, nodeId: parsed.id, field: "value" as const },
-    right: { kind: "const" as const, value: amount },
-  };
 }

@@ -9,6 +9,7 @@ import { CharacterLiveRefresh } from "@/components/characters/character-live-ref
 import { NodeEditor } from "@/components/characters/node-editor";
 import { NumericEffectBuilder } from "@/components/characters/numeric-effect-builder";
 import { StructuralEffectBuilder } from "@/components/characters/structural-effect-builder";
+import { TriggeredEffectBuilder } from "@/components/characters/triggered-effect-builder";
 import { EffectManager } from "@/components/characters/effect-manager";
 import { CharacterSettings } from "@/components/characters/character-settings";
 import { SidebarSection } from "@/components/characters/sidebar-section";
@@ -70,6 +71,14 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
   let diagnostics = [...parsedNodes.diagnostics, ...parsedEffects.diagnostics];
   const nodes = parsedNodes.nodes;
   const effects = parsedEffects.effects;
+  const nodeClickTriggers = effects
+    .filter((effect) => effect.enabled && effect.operation === "TRIGGERED" && effect.payload?.triggered?.trigger.kind === "nodeClick")
+    .map((effect) => ({
+      effectId: effect.id,
+      nodeId: effect.payload?.triggered?.trigger.kind === "nodeClick" ? effect.payload.triggered.trigger.nodeId : "",
+      name: effect.name,
+    }))
+    .filter((trigger) => trigger.nodeId);
   const writableMembership = await prisma.workspaceMembership.findFirst({
     where: { workspaceId: data.workspaceId, userId: user.id, role: { in: ["OWNER", "GM"] } },
     select: { id: true },
@@ -172,7 +181,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
             <CardTitle>{t("character.nodeTree")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <CharacterTree nodes={buildNodeTree(linkedDisplayNodes)} searchable />
+            <CharacterTree nodes={buildNodeTree(linkedDisplayNodes)} searchable manualTriggers={canEdit ? nodeClickTriggers : []} />
           </CardContent>
         </Card>
         <div className="space-y-6">
@@ -203,6 +212,11 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
           {canEdit && (
             <SidebarSection id="structural-effects" title={t("character.structuralEffects")}>
               <StructuralEffectBuilder characterId={characterId} nodes={nodes} />
+            </SidebarSection>
+          )}
+          {canEdit && (
+            <SidebarSection id="triggered-effects" title={t("character.triggeredEffects")}>
+              <TriggeredEffectBuilder characterId={characterId} nodes={nodes} />
             </SidebarSection>
           )}
           {canEdit && (

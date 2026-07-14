@@ -36,6 +36,42 @@ export type CreateNodePayload = {
   children?: CreateNodePayload[];
 };
 
+export type TriggeredEffectTrigger =
+  | { kind: "condition"; condition: EffectCondition }
+  | { kind: "nodeClick"; nodeId: string; condition: EffectCondition };
+
+export type TriggeredNumericAction = {
+  kind: "NUMERIC";
+  targetNodeId: string;
+  field?: "value" | "current" | "min" | "max";
+  operation: "SET" | "ADD" | "SUBTRACT" | "MULTIPLY";
+  source: EffectSource;
+};
+
+export type TriggeredPatchAction = {
+  kind: "PATCH_NODE_PROPS";
+  targetNodeId: string;
+  patch: Record<string, unknown>;
+};
+
+export type TriggeredCreateNodeAction = {
+  kind: "CREATE_NODE" | "CREATE_GROUP";
+  parentNodeId?: string | null;
+  createNode: CreateNodePayload;
+};
+
+export type TriggeredEffectAction =
+  | TriggeredNumericAction
+  | TriggeredPatchAction
+  | TriggeredCreateNodeAction;
+
+export type TriggeredEffectPayload = {
+  triggered: {
+    trigger: TriggeredEffectTrigger;
+    actions: TriggeredEffectAction[];
+  };
+};
+
 export type EffectOperation =
   | "ADD"
   | "SUBTRACT"
@@ -44,7 +80,8 @@ export type EffectOperation =
   | "CREATE_NODE"
   | "CREATE_GROUP"
   | "SET_BAR_MAX"
-  | "PATCH_NODE_PROPS";
+  | "PATCH_NODE_PROPS"
+  | "TRIGGERED";
 
 export type EffectDefinition = {
   id: string;
@@ -61,6 +98,7 @@ export type EffectDefinition = {
     patch?: Record<string, unknown>;
     patchFromSource?: { field: string };
     numericField?: string;
+    triggered?: TriggeredEffectPayload["triggered"];
   };
 };
 
@@ -96,6 +134,18 @@ export function diagnoseEffectReferences(
   if (effect.sourceNodeId) referencedIds.add(effect.sourceNodeId);
   collectSourceReferences(effect.source, referencedIds);
   collectConditionReferences(effect.condition, referencedIds);
+  if (effect.payload?.triggered) {
+    if (effect.payload.triggered.trigger.kind === "nodeClick") referencedIds.add(effect.payload.triggered.trigger.nodeId);
+    collectConditionReferences(effect.payload.triggered.trigger.condition, referencedIds);
+    for (const action of effect.payload.triggered.actions) {
+      if (action.kind === "NUMERIC") {
+        referencedIds.add(action.targetNodeId);
+        collectSourceReferences(action.source, referencedIds);
+      }
+      if (action.kind === "PATCH_NODE_PROPS") referencedIds.add(action.targetNodeId);
+      if ((action.kind === "CREATE_NODE" || action.kind === "CREATE_GROUP") && action.parentNodeId) referencedIds.add(action.parentNodeId);
+    }
+  }
 
   return {
     missingNodeIds: [...referencedIds].filter((id) => !nodeIds.has(id)),

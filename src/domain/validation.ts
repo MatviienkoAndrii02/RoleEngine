@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { CreateNodePayload, EffectCondition, EffectDefinition, EffectSource, EffectTarget, FormulaExpression } from "@/domain/effects";
+import type { CreateNodePayload, EffectCondition, EffectDefinition, EffectSource, EffectTarget, FormulaExpression, TriggeredEffectAction, TriggeredEffectPayload, TriggeredEffectTrigger } from "@/domain/effects";
 import { NODE_ICON_NAMES, type NodeData, type NodeType, type TableColumnType } from "@/domain/nodes";
 import { TEMPLATE_TAG_COLOR_NAMES } from "@/domain/template-tags";
 
@@ -198,6 +198,18 @@ export const effectConditionSchema: z.ZodType<EffectCondition> = z.lazy(() =>
   ]),
 );
 
+export const triggeredEffectTriggerSchema: z.ZodType<TriggeredEffectTrigger> = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("condition"),
+    condition: effectConditionSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal("nodeClick"),
+    nodeId: idSchema,
+    condition: effectConditionSchema,
+  }).strict(),
+]);
+
 export const effectTargetSchema: z.ZodType<EffectTarget> = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("node"), nodeId: idSchema }).strict(),
   z.object({ kind: z.literal("templateSlot"), slotId: idSchema }).strict(),
@@ -226,6 +238,36 @@ export const createNodePayloadSchema: z.ZodType<CreateNodePayload> = z.lazy(() =
   }),
 );
 
+export const triggeredEffectActionSchema: z.ZodType<TriggeredEffectAction> = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("NUMERIC"),
+    targetNodeId: idSchema,
+    field: z.enum(["value", "current", "min", "max"]).optional(),
+    operation: z.enum(["SET", "ADD", "SUBTRACT", "MULTIPLY"]),
+    source: effectSourceSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal("PATCH_NODE_PROPS"),
+    targetNodeId: idSchema,
+    patch: z.record(z.string(), z.json()),
+  }).strict(),
+  z.object({
+    kind: z.literal("CREATE_NODE"),
+    parentNodeId: idSchema.nullable().optional(),
+    createNode: createNodePayloadSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal("CREATE_GROUP"),
+    parentNodeId: idSchema.nullable().optional(),
+    createNode: createNodePayloadSchema,
+  }).strict(),
+]);
+
+export const triggeredEffectPayloadSchema: z.ZodType<TriggeredEffectPayload["triggered"]> = z.object({
+  trigger: triggeredEffectTriggerSchema,
+  actions: z.array(triggeredEffectActionSchema).min(1).max(100),
+}).strict();
+
 export const effectOperationSchema = z.enum([
   "ADD",
   "SUBTRACT",
@@ -235,6 +277,7 @@ export const effectOperationSchema = z.enum([
   "CREATE_GROUP",
   "SET_BAR_MAX",
   "PATCH_NODE_PROPS",
+  "TRIGGERED",
 ]);
 
 export const effectPayloadSchema: z.ZodType<NonNullable<EffectDefinition["payload"]>> = z.object({
@@ -242,6 +285,7 @@ export const effectPayloadSchema: z.ZodType<NonNullable<EffectDefinition["payloa
   patch: z.record(z.string(), z.json()).optional(),
   patchFromSource: z.object({ field: idSchema }).strict().optional(),
   numericField: idSchema.optional(),
+  triggered: triggeredEffectPayloadSchema.optional(),
 }).strict();
 
 export const effectDefinitionSchema: z.ZodType<EffectDefinition> = z.object({
@@ -287,7 +331,14 @@ export const structuralEffectCommandSchema = z.object({
   }
 });
 
-export const createEffectCommandSchema = z.union([numericEffectCommandSchema, structuralEffectCommandSchema]);
+export const triggeredEffectCommandSchema = z.object({
+  name: nameSchema,
+  operation: z.literal("TRIGGERED"),
+  trigger: triggeredEffectTriggerSchema,
+  actions: z.array(triggeredEffectActionSchema).min(1).max(100),
+}).strict();
+
+export const createEffectCommandSchema = z.union([numericEffectCommandSchema, structuralEffectCommandSchema, triggeredEffectCommandSchema]);
 
 const updateEffectMetadataSchema = z.object({
   name: nameSchema.optional(),
@@ -303,6 +354,7 @@ const effectReplacementFields = {
 const replaceEffectCommandSchema = z.union([
   numericEffectCommandSchema.extend(effectReplacementFields),
   structuralEffectCommandSchema.safeExtend(effectReplacementFields),
+  triggeredEffectCommandSchema.extend(effectReplacementFields),
 ]);
 
 export const updateEffectCommandSchema = z.union([replaceEffectCommandSchema, updateEffectMetadataSchema]);
