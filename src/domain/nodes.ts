@@ -160,3 +160,18 @@ export function readNumericValue(node: CharacterNodeModel | undefined | null): n
   if (node.type === "BAR" && "current" in node.data) return node.data.current;
   return null;
 }
+
+export function getNodeBreadcrumb(node: Pick<CharacterNodeModel, "id" | "parentId" | "name"> | null | undefined, nodes: Array<Pick<CharacterNodeModel, "id" | "parentId" | "name">>) {
+  if (!node) return "";
+  const names = [node.name];
+  let parentId = node.parentId;
+  const visited = new Set<string>();
+  while (parentId && !visited.has(parentId)) {
+    visited.add(parentId);
+    const parent = nodes.find((candidate) => candidate.id === parentId);
+    if (!parent) break;
+    names.unshift(parent.name);
+    parentId = parent.parentId;
+  }
+  return names.join(" / ");
+}

@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 import { ChevronsUpDown, Crosshair, Search, X } from "lucide-react";
-import type { CharacterNodeModel, NodeType } from "@/domain/nodes";
+import { getNodeBreadcrumb, type CharacterNodeModel, type NodeType } from "@/domain/nodes";
 import { useCharacterUiStore } from "@/store/character-ui-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,7 +72,7 @@ export function NodePicker({
       .filter((node) => {
         if (!normalized) return true;
         const description = typeof node.data.description === "string" ? node.data.description : "";
-        return [node.name, node.path, node.type, description, breadcrumb(node, nodes)].some((part) => part.toLowerCase().includes(normalized));
+        return [node.name, node.path, node.type, description, getNodeBreadcrumb(node, nodes)].some((part) => part.toLowerCase().includes(normalized));
       });
   }, [allowedNodeIds, nodes, query]);
 
@@ -85,7 +85,7 @@ export function NodePicker({
   const selectedLabel = useMemo(() => {
     if (includeRoot && currentValue === rootValue) return rootLabel ?? t("common.rootCharacter");
     const node = nodes.find((candidate) => candidate.id === currentValue);
-    if (node) return breadcrumb(node, nodes);
+    if (node) return getNodeBreadcrumb(node, nodes);
     return extraOptions.find((option) => option.value === currentValue)?.label ?? "";
   }, [currentValue, extraOptions, includeRoot, nodes, rootLabel, rootValue, t]);
 
@@ -208,7 +208,7 @@ export function NodePicker({
         {filteredNodes.map((node) => (
           <PickerOption
             key={node.id}
-            label={breadcrumb(node, nodes)}
+            label={getNodeBreadcrumb(node, nodes)}
             description={node.type}
             selected={currentValue === node.id}
             onClick={() => setValue(node.id)}
@@ -236,20 +236,6 @@ function PickerOption({ label, description, selected, onClick }: { label: string
       {description && <span className="shrink-0 text-xs uppercase text-muted-foreground">{description}</span>}
     </button>
   );
-}
-
-function breadcrumb(node: CharacterNodeModel, nodes: CharacterNodeModel[]) {
-  const names = [node.name];
-  let parentId = node.parentId;
-  const visited = new Set<string>();
-  while (parentId && !visited.has(parentId)) {
-    visited.add(parentId);
-    const parent = nodes.find((candidate) => candidate.id === parentId);
-    if (!parent) break;
-    names.unshift(parent.name);
-    parentId = parent.parentId;
-  }
-  return names.join(" / ");
 }
 
 function rootMatches(query: string, label: string) {

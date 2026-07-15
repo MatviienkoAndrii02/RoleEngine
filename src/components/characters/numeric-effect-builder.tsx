@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
+import { EffectPreview } from "@/components/characters/effect-preview";
 import { EffectSourceEditor, readEditableEffectSource, sourceKindLabel, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
 import { fieldLabel, nodeSummary } from "@/components/characters/effect-summary";
 import { NodePicker } from "@/components/characters/node-picker";
@@ -38,6 +39,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
   const targetFields = targetNode ? getNumericPatchFields(targetNode.type) : [];
   const targetFieldsForSelection = targetSlot ? commonNumericFields : targetFields;
   const slotOptions = numericSlots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
+  const targetSummary = numericTargetSummary(nodeSummary(numeric, targetNodeId, numericSlots), numericField, operation, sourceKindLabel(sourceKind, t), t);
 
   async function submit(data: FormData) {
     setPending(true); setError(null);
@@ -63,7 +65,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
       <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
         <EffectConditionBuilder nodes={numeric} slots={numericSlots} />
       </EffectEditorSection>
-      <EffectEditorSection title={t("effect.target")} summary={numericTargetSummary(nodeSummary(numeric, targetNodeId, numericSlots), numericField, operation, sourceKindLabel(sourceKind, t), t)}>
+      <EffectEditorSection title={t("effect.target")} summary={targetSummary}>
         <NodePicker
           name="targetNodeId"
           nodes={numeric}
@@ -84,6 +86,10 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
       <EffectEditorSection title={t("effect.source")} summary={sourceKindLabel(sourceKind, t)}>
         <EffectSourceEditor kind={sourceKind} onKindChange={setSourceKind} nodes={numeric} slots={numericSlots} />
       </EffectEditorSection>
+      <EffectPreview
+        lines={[targetNodeId ? targetSummary : t("effect.previewSelectTarget"), `${t("effect.source")}: ${sourceKindLabel(sourceKind, t)}`]}
+        warnings={!targetNodeId ? [t("effect.inlineTargetRequired")] : []}
+      />
       {error && <p className="text-sm text-destructive">{error}</p>}<Button disabled={pending}><Plus className="h-4 w-4" />{pending ? t("effect.checking") : t("effect.addEffect")}</Button>
     </form>
   );

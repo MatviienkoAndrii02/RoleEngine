@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Pencil, Play, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { NodeTreeItem } from "@/domain/nodes";
+import { getNodeBreadcrumb, type NodeTreeItem } from "@/domain/nodes";
 import { templateTagColorLineClass } from "@/domain/template-tags";
 import { useCharacterUiStore } from "@/store/character-ui-store";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,10 @@ export function CharacterTree({ nodes, editorSectionId = "node-editor", searchab
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const nodePickRequest = useCharacterUiStore((state) => state.nodePickRequest);
+  const selectedNodeId = useCharacterUiStore((state) => state.selectedNodeId);
   const normalizedQuery = query.trim().toLowerCase();
+  const flatNodes = useMemo(() => flattenTree(nodes), [nodes]);
+  const selectedNode = flatNodes.find((node) => node.id === selectedNodeId) ?? null;
   const visibleNodes = useMemo(() => normalizedQuery ? filterNodeTree(nodes, normalizedQuery) : nodes, [nodes, normalizedQuery]);
   if (nodes.length === 0) {
     return <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">{t("node.noNodes")}</div>;
@@ -48,6 +51,12 @@ export function CharacterTree({ nodes, editorSectionId = "node-editor", searchab
             placeholder={t("node.searchPlaceholder")}
             aria-label={t("common.search")}
           />
+        </div>
+      )}
+      {selectedNode && !nodePickRequest && (
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{t("node.context")}:</span>{" "}
+          <span className="break-words">{getNodeBreadcrumb(selectedNode, flatNodes)}</span>
         </div>
       )}
       {visibleNodes.length === 0 ? (
@@ -228,6 +237,18 @@ function filterNodeTree(nodes: NodeTreeItem[], query: string): NodeTreeItem[] {
       result.push({ ...node, children: filteredChildren });
     }
   }
+  return result;
+}
+
+function flattenTree(nodes: NodeTreeItem[]) {
+  const result: NodeTreeItem[] = [];
+  const visit = (items: NodeTreeItem[]) => {
+    for (const item of items) {
+      result.push(item);
+      visit(item.children);
+    }
+  };
+  visit(nodes);
   return result;
 }
 

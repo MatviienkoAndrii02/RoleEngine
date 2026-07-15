@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
+import { EffectPreview } from "@/components/characters/effect-preview";
 import { EffectSourceEditor, readEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
 import { nodeSummary } from "@/components/characters/effect-summary";
 import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
@@ -52,6 +53,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   const patchFields = useMemo(() => patchTarget ? getStructuralPatchFields(patchTarget.type) : [], [patchTarget]);
   const patchFieldsForSelection = patchSlot ? commonStructuralFields : patchFields;
   const selectedPatchField = patchFieldsForSelection.find((field) => field.field === patchField) ?? patchFieldsForSelection[0] ?? null;
+  const actionSummary = structuralActionSummary(operation, nodeSummary(nodes, targetNodeId, slots, rootLabel), t);
 
   useEffect(() => {
     if (!selectedPatchField) {
@@ -122,7 +124,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
       <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
         <EffectConditionBuilder nodes={nodes} slots={slots} />
       </EffectEditorSection>
-      <EffectEditorSection title={t("effect.action")} summary={structuralActionSummary(operation, nodeSummary(nodes, targetNodeId, slots, rootLabel), t)}>
+      <EffectEditorSection title={t("effect.action")} summary={actionSummary}>
         <select value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)} className={selectClass}>
           <option value="CREATE_NODE">{t("effect.createNode")}</option>
           <option value="CREATE_GROUP">{t("effect.createGroup")}</option>
@@ -183,6 +185,14 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
         </EffectEditorSection>
       )}
 
+      <EffectPreview
+        lines={[
+          targetNodeId ? actionSummary : t("effect.previewSelectTarget"),
+          operation === "PATCH_NODE_PROPS" && selectedPatchField ? `${t("effect.patchField")}: ${t(selectedPatchField.labelKey)}` : "",
+          operation !== "PATCH_NODE_PROPS" ? `${t("common.type")}: ${operation === "CREATE_GROUP" ? "GROUP" : nodeType}` : "",
+        ]}
+        warnings={!targetNodeId ? [t("effect.inlineTargetRequired")] : []}
+      />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button disabled={pending}>
         <Plus className="h-4 w-4" />

@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
+import { EffectPreview } from "@/components/characters/effect-preview";
+import { nodeSummary } from "@/components/characters/effect-summary";
 import { NodePicker } from "@/components/characters/node-picker";
 import {
   newTriggeredActionRow,
@@ -45,6 +47,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [formKey, setFormKey] = useState(0);
+  const triggerNodeSummary = nodeSummary(nodes, triggerNodeId, slots);
 
   async function submit(data: FormData) {
     setPending(true);
@@ -121,8 +124,25 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
           />
         ))}
       </EffectEditorSection>
+      <EffectPreview
+        lines={[
+          triggerKind === "nodeClick"
+            ? `${t("effect.triggerNodeClick")}: ${triggerNodeSummary || t("effect.previewSelectTarget")}`
+            : t("effect.triggerCondition"),
+          t("effect.actionsCount", { count: rows.length }),
+          `${t("effect.actionOrder")}: ${rows.map((row, index) => `${index + 1}. ${triggeredActionKindLabel(row.kind, t)}`).join(" -> ")}`,
+        ]}
+        warnings={triggerKind === "nodeClick" && !triggerNodeId ? [t("effect.inlineTriggerNodeRequired")] : []}
+      />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button disabled={pending}><Plus className="h-4 w-4" />{pending ? t("effect.checking") : t("effect.addTriggeredEffect")}</Button>
     </form>
   );
+}
+
+function triggeredActionKindLabel(kind: TriggeredActionRow["kind"], t: ReturnType<typeof useI18n>["t"]) {
+  if (kind === "CREATE_NODE") return t("effect.createNode");
+  if (kind === "CREATE_GROUP") return t("effect.createGroup");
+  if (kind === "PATCH_NODE_PROPS") return t("effect.patchNode");
+  return t("effect.setNumericField");
 }

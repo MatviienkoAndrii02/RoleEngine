@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Save, Trash2, X } from "lucide-react";
-import { NODE_ICON_NAMES, type CharacterNodeModel, type NodeData, type NodeIconName, type NodeType } from "@/domain/nodes";
+import { getNodeBreadcrumb, NODE_ICON_NAMES, type CharacterNodeModel, type NodeData, type NodeIconName, type NodeType } from "@/domain/nodes";
 import { TEMPLATE_TAG_COLOR_NAMES, type TemplateTagColorName } from "@/domain/template-tags";
 import { useCharacterUiStore } from "@/store/character-ui-store";
 import { Button } from "@/components/ui/button";
@@ -153,6 +153,7 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
   const initialType = active?.type ?? "NUMBER";
   const [type, setType] = useState<NodeType>(initialType);
   const parentOptions = active ? nodes.filter((node) => canUseAsParent(node, active, nodes)) : nodes;
+  const activeBreadcrumb = active ? getNodeBreadcrumb(active, nodes) : "";
 
   useEffect(() => {
     setType(initialType);
@@ -160,6 +161,12 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
 
   return (
     <form action={submit} className="space-y-4">
+      {activeBreadcrumb && (
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{t("node.context")}:</span>{" "}
+          <span className="break-words">{activeBreadcrumb}</span>
+        </div>
+      )}
       <FormField label={t("common.name")} name="name" required defaultValue={active?.name} />
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="node-type">{t("common.type")}</label>
@@ -326,20 +333,6 @@ function readTableData(raw: string) {
   } catch {
     return { columns: [], rows: [] };
   }
-}
-
-function getNodeBreadcrumb(node: CharacterNodeModel, nodes: CharacterNodeModel[]) {
-  const names = [node.name];
-  let parentId = node.parentId;
-  const visited = new Set<string>();
-  while (parentId && !visited.has(parentId)) {
-    visited.add(parentId);
-    const parent = nodes.find((candidate) => candidate.id === parentId);
-    if (!parent) break;
-    names.unshift(parent.name);
-    parentId = parent.parentId;
-  }
-  return names.join(" / ");
 }
 
 function canUseAsParent(candidate: CharacterNodeModel, active: CharacterNodeModel, nodes: CharacterNodeModel[]) {
