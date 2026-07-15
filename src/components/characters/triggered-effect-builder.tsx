@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { CharacterNodeModel } from "@/domain/nodes";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
 import { EffectPreview } from "@/components/characters/effect-preview";
-import { nodeSummary } from "@/components/characters/effect-summary";
+import { conditionExpressionSummary, nodeSummary, triggeredActionSummary } from "@/components/characters/effect-summary";
 import { NodePicker } from "@/components/characters/node-picker";
 import {
   newTriggeredActionRow,
@@ -47,7 +47,40 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [formKey, setFormKey] = useState(0);
-  const triggerNodeSummary = nodeSummary(nodes, triggerNodeId, slots);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [preview, setPreview] = useState<{ condition: string; actions: string[]; warnings: string[] }>(() => ({
+    condition: t("effect.conditionAlways"),
+    actions: [t("effect.actionsCount", { count: 1 })],
+    warnings: [],
+  }));
+
+  useEffect(() => {
+    refreshPreview();
+  }, [triggerKind, triggerNodeId, rows, formKey]);
+
+  function refreshPreview() {
+    const form = formRef.current;
+    if (!form) return;
+    const data = new FormData(form);
+    const triggerCondition = readEffectCondition(data, "trigger");
+    const triggerNode = nodeSummary(nodes, String(data.get("triggerNodeId") ?? triggerNodeId), slots);
+    const condition = triggerKind === "nodeClick"
+      ? `${t("effect.triggerNodeClick")}: ${triggerNode || t("effect.previewSelectTarget")}\n${conditionExpressionSummary(triggerCondition, numericNodes, numericSlots, t)}`
+      : conditionExpressionSummary(triggerCondition, numericNodes, numericSlots, t);
+    const rootLabel = templateId ? t("common.rootTemplate") : t("common.rootCharacter");
+    const actions = rows.map((row, index) => {
+      try {
+        return `${index + 1}. ${triggeredActionSummary(readTriggeredAction(row, data, index, nodes, "action"), nodes, slots, t, rootLabel)}`;
+      } catch {
+        return `${index + 1}. ${triggeredActionKindLabel(row.kind, t)}`;
+      }
+    });
+    setPreview({
+      condition,
+      actions,
+      warnings: triggerKind === "nodeClick" && !String(data.get("triggerNodeId") ?? triggerNodeId) ? [t("effect.inlineTriggerNodeRequired")] : [],
+    });
+  }
 
   async function submit(data: FormData) {
     setPending(true);
@@ -78,7 +111,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
   }
 
   return (
-    <form key={formKey} action={submit} className="space-y-4">
+    <form key={formKey} ref={formRef} action={submit} className="space-y-4">
       <Input name="name" required placeholder={t("effect.name")} />
       <EffectEditorSection title={t("effect.trigger")} summary={triggerKind === "nodeClick" ? t("effect.triggerNodeClick") : t("effect.triggerCondition")}>
         <select value={triggerKind} onChange={(event) => setTriggerKind(event.target.value as TriggerKind)} className={selectClass}>
@@ -96,7 +129,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
             placeholder={t("effect.triggerNode")}
           />
         )}
-        <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="trigger" />
+        <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="trigger" onConditionChange={refreshPreview} />
       </EffectEditorSection>
       <EffectEditorSection title={t("effect.triggerActions")} summary={t("effect.actionsCount", { count: rows.length })}>
         <div className="flex items-center justify-between gap-3">
@@ -124,16 +157,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
           />
         ))}
       </EffectEditorSection>
-      <EffectPreview
-        lines={[
-          triggerKind === "nodeClick"
-            ? `${t("effect.triggerNodeClick")}: ${triggerNodeSummary || t("effect.previewSelectTarget")}`
-            : t("effect.triggerCondition"),
-          t("effect.actionsCount", { count: rows.length }),
-          `${t("effect.actionOrder")}: ${rows.map((row, index) => `${index + 1}. ${triggeredActionKindLabel(row.kind, t)}`).join(" -> ")}`,
-        ]}
-        warnings={triggerKind === "nodeClick" && !triggerNodeId ? [t("effect.inlineTriggerNodeRequired")] : []}
-      />
+      <EffectPreview condition={preview.condition} actions={preview.actions} warnings={preview.warnings} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button disabled={pending}><Plus className="h-4 w-4" />{pending ? t("effect.checking") : t("effect.addTriggeredEffect")}</Button>
     </form>

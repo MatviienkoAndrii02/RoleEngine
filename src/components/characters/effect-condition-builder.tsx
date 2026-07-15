@@ -16,12 +16,14 @@ export function EffectConditionBuilder({
   prefix = "condition",
   condition,
   allowCurrent = false,
+  onConditionChange,
 }: {
   nodes: CharacterNodeModel[];
   slots?: TemplateSlotModel[];
   prefix?: string;
   condition?: EffectCondition;
   allowCurrent?: boolean;
+  onConditionChange?: () => void;
 }) {
   const { t } = useI18n();
   const [join, setJoin] = useState(initialJoin(condition, allowCurrent));
@@ -34,25 +36,25 @@ export function EffectConditionBuilder({
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
-        <select name={`${prefix}Join`} value={join} onChange={(event) => setJoin(event.target.value)} className={selectClass}>
+        <select name={`${prefix}Join`} value={join} onChange={(event) => { setJoin(event.target.value); notifyConditionChange(onConditionChange); }} className={selectClass}>
           {allowCurrent && <option value="current">{t("effect.currentComplexCondition")}</option>}
           <option value="single">{t("effect.singleCondition")}</option>
           <option value="and">{t("effect.conditionAnd")}</option>
           <option value="or">{t("effect.conditionOr")}</option>
           <option value="not">{t("effect.conditionNot")}</option>
         </select>
-        {join !== "current" && <ConditionKind name={`${prefix}FirstKind`} value={firstKind} onChange={setFirstKind} />}
+        {join !== "current" && <ConditionKind name={`${prefix}FirstKind`} value={firstKind} onChange={(value) => { setFirstKind(value); notifyConditionChange(onConditionChange); }} />}
       </div>
       {join === "current" ? (
         <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">{t("effect.currentComplexCondition")}</p>
       ) : (
-        <ConditionFields kind={firstKind} prefix={`${prefix}First`} nodes={nodes} slotOptions={slotOptions} condition={first} />
+        <ConditionFields kind={firstKind} prefix={`${prefix}First`} nodes={nodes} slotOptions={slotOptions} condition={first} onConditionChange={onConditionChange} />
       )}
       {(join === "and" || join === "or") && (
         <div className="space-y-2 rounded-md border border-dashed p-2">
           <p className="text-xs text-muted-foreground">{t("effect.conditionAdditional")}</p>
-          <ConditionKind name={`${prefix}SecondKind`} value={secondKind} onChange={setSecondKind} />
-          <ConditionFields kind={secondKind} prefix={`${prefix}Second`} nodes={nodes} slotOptions={slotOptions} condition={second} />
+          <ConditionKind name={`${prefix}SecondKind`} value={secondKind} onChange={(value) => { setSecondKind(value); notifyConditionChange(onConditionChange); }} />
+          <ConditionFields kind={secondKind} prefix={`${prefix}Second`} nodes={nodes} slotOptions={slotOptions} condition={second} onConditionChange={onConditionChange} />
         </div>
       )}
     </div>
@@ -89,31 +91,33 @@ function ConditionFields({
   nodes,
   slotOptions,
   condition,
+  onConditionChange,
 }: {
   kind: string;
   prefix: string;
   nodes: CharacterNodeModel[];
   slotOptions: Array<{ value: string; label: string }>;
   condition?: EffectCondition;
+  onConditionChange?: () => void;
 }) {
   const { t } = useI18n();
   const [valueKind, setValueKind] = useState<"number" | "node">(conditionValueKind(condition));
   if (kind === "always") return null;
   return (
     <div className="space-y-2">
-      <NodePicker name={`${prefix}NodeId`} nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required defaultValue={conditionNodeValue(condition)} placeholder={t("effect.selectNode")} compact />
+      <NodePicker name={`${prefix}NodeId`} nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required defaultValue={conditionNodeValue(condition)} onChange={() => notifyConditionChange(onConditionChange)} placeholder={t("effect.selectNode")} compact />
       {kind !== "exists" && (
         <div className="space-y-2 rounded-md border bg-muted/20 p-2">
-          <select name={`${prefix}ValueKind`} value={valueKind} onChange={(event) => setValueKind(event.target.value as "number" | "node")} className={selectClass}>
+          <select name={`${prefix}ValueKind`} value={valueKind} onChange={(event) => { setValueKind(event.target.value as "number" | "node"); notifyConditionChange(onConditionChange); }} className={selectClass}>
             <option value="number">{t("effect.sourceNumber")}</option>
             <option value="node">{t("effect.sourceNode")}</option>
           </select>
           {valueKind === "number" ? (
-            <Input name={`${prefix}Value`} type="number" step="any" required defaultValue={conditionNumberValue(condition)} placeholder={t("common.value")} />
+            <Input name={`${prefix}Value`} type="number" step="any" required defaultValue={conditionNumberValue(condition)} onInput={() => notifyConditionChange(onConditionChange)} placeholder={t("common.value")} />
           ) : (
             <div className="space-y-2">
-              <NodePicker name={`${prefix}ValueNodeId`} nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required defaultValue={conditionSourceNodeValue(condition)} placeholder={t("effect.selectNode")} compact />
-              <select name={`${prefix}ValueField`} defaultValue={conditionSourceField(condition)} className={selectClass}>
+              <NodePicker name={`${prefix}ValueNodeId`} nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required defaultValue={conditionSourceNodeValue(condition)} onChange={() => notifyConditionChange(onConditionChange)} placeholder={t("effect.selectNode")} compact />
+              <select name={`${prefix}ValueField`} defaultValue={conditionSourceField(condition)} onChange={() => notifyConditionChange(onConditionChange)} className={selectClass}>
                 {numericFields.map((field) => <option key={field} value={field}>{fieldLabel(field, t)}</option>)}
               </select>
             </div>
@@ -240,4 +244,9 @@ function parseTemplateSelectValue(value: string) {
   return value.startsWith("slot:")
     ? { kind: "slot" as const, id: value.slice("slot:".length) }
     : { kind: "node" as const, id: value };
+}
+
+function notifyConditionChange(callback: (() => void) | undefined) {
+  if (!callback) return;
+  window.setTimeout(callback, 0);
 }

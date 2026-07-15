@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Pencil, Save, Trash2, X } from "lucide-react";
 import type { CharacterNodeModel, NodeType } from "@/domain/nodes";
@@ -155,6 +155,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   onSave: (body: object) => void;
 }) {
   const { t } = useI18n();
+  const formRef = useRef<HTMLFormElement>(null);
   const initialOperation = effect.operation;
   const [operation, setOperation] = useState<Operation>(initialOperation);
   const [sourceKind, setSourceKind] = useState(initialSourceKind(effect.source));
@@ -168,6 +169,8 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   const [triggerNodeId, setTriggerNodeId] = useState(triggeredPayload?.trigger.kind === "nodeClick" ? triggeredPayload.trigger.nodeId : "");
   const triggerCondition = triggeredPayload?.trigger.condition ?? { kind: "always" as const };
   const [triggerRows, setTriggerRows] = useState<TriggeredActionRow[]>(() => triggeredPayload?.actions.length ? triggeredPayload.actions.map(triggeredActionToRow) : [newTriggeredActionRow()]);
+  const [conditionPreview, setConditionPreview] = useState(() => conditionExpressionSummary(effect.condition, nodes, slots, t));
+  const [triggerPreview, setTriggerPreview] = useState(() => triggerSummary(triggerKind, triggerNodeId, triggerCondition, nodes, slots, t));
   const numericNodes = nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR");
   const numericSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"));
   const containers = nodes.filter((node) => node.type === "CONTAINER" || node.type === "GROUP");
@@ -204,6 +207,18 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
     if (!patchFields.some((field) => field.field === patchField)) setPatchField(selectedPatchField.field);
     if (!selectedPatchField.derived) setPatchMode("static");
   }, [patchField, patchFields, selectedPatchField]);
+
+  function refreshConditionPreview() {
+    const form = formRef.current;
+    if (!form) return;
+    const data = new FormData(form);
+    if (effect.operation === "TRIGGERED") {
+      const nextCondition = readEffectCondition(data, "triggerEdit", triggerCondition);
+      setTriggerPreview(triggerSummary(triggerKind, String(data.get("triggerNodeId") ?? triggerNodeId), nextCondition, nodes, slots, t));
+      return;
+    }
+    setConditionPreview(conditionExpressionSummary(readEffectCondition(data, "condition", effect.condition), nodes, slots, t));
+  }
 
   function submit(formData: FormData) {
     if (effect.operation === "TRIGGERED") {
@@ -248,7 +263,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   }
 
   return (
-    <form action={submit} className="space-y-4 border-t pt-4">
+    <form ref={formRef} action={submit} className="space-y-4 border-t pt-4">
       <div className="flex items-center justify-between gap-3"><h3 className="font-medium">{t("effect.edit")}</h3><Button type="button" size="icon" variant="ghost" onClick={onCancel} aria-label={t("effect.closeEditor")}><X className="h-4 w-4" /></Button></div>
       <EffectEditorSection title={t("effect.basics")} summary={effect.name}>
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_88px]">
@@ -258,14 +273,14 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
         <label className="flex items-center gap-2 text-sm"><input name="enabled" type="checkbox" defaultChecked={effect.enabled} />{t("effect.enabled")}</label>
       </EffectEditorSection>
       {effect.operation !== "TRIGGERED" && (
-        <EffectEditorSection title={t("effect.condition")} summary={conditionExpressionSummary(effect.condition, nodes, slots, t)} defaultOpen={false}>
-          <EffectConditionBuilder nodes={nodes} slots={slots} condition={effect.condition} allowCurrent />
+        <EffectEditorSection title={t("effect.condition")} summary={conditionPreview} defaultOpen={false}>
+          <EffectConditionBuilder nodes={nodes} slots={slots} condition={effect.condition} allowCurrent onConditionChange={refreshConditionPreview} />
         </EffectEditorSection>
       )}
       {effect.operation === "TRIGGERED" ? (
         <>
-        <EffectEditorSection title={t("effect.trigger")} summary={triggerSummary(triggerKind, triggerNodeId, triggerCondition, nodes, slots, t)}>
-          <select value={triggerKind} onChange={(event) => setTriggerKind(event.target.value as TriggerKind)} className={selectClass}>
+        <EffectEditorSection title={t("effect.trigger")} summary={triggerPreview}>
+          <select value={triggerKind} onChange={(event) => { setTriggerKind(event.target.value as TriggerKind); window.setTimeout(refreshConditionPreview, 0); }} className={selectClass}>
             <option value="condition">{t("effect.triggerCondition")}</option>
             <option value="nodeClick">{t("effect.triggerNodeClick")}</option>
           </select>
@@ -274,12 +289,12 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
               name="triggerNodeId"
               nodes={nodes}
               value={triggerNodeId}
-              onChange={setTriggerNodeId}
+              onChange={(value) => { setTriggerNodeId(value); window.setTimeout(refreshConditionPreview, 0); }}
               required
               placeholder={t("effect.triggerNode")}
             />
           )}
-          <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="triggerEdit" condition={triggerCondition} allowCurrent />
+          <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="triggerEdit" condition={triggerCondition} allowCurrent onConditionChange={refreshConditionPreview} />
         </EffectEditorSection>
         <EffectEditorSection title={t("effect.triggerActions")} summary={triggeredActionsSummary(triggeredPayload?.actions ?? [], triggerRows.length, nodes, slots, t, rootLabel)}>
           <div className="flex items-center justify-between gap-3">

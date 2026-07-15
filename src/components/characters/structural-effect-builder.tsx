@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { EffectSource } from "@/domain/effects";
@@ -13,7 +13,7 @@ import { EffectConditionBuilder, readEffectCondition } from "@/components/charac
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
 import { EffectPreview } from "@/components/characters/effect-preview";
 import { EffectSourceEditor, readEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
-import { nodeSummary } from "@/components/characters/effect-summary";
+import { conditionExpressionSummary, fieldLabel, nodeSummary, sourceSummary } from "@/components/characters/effect-summary";
 import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
 import { NodeIconPicker } from "@/components/characters/node-icons";
 import { NodePicker } from "@/components/characters/node-picker";
@@ -39,6 +39,12 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [formKey, setFormKey] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [preview, setPreview] = useState<{ condition: string; actions: string[]; warnings: string[] }>(() => ({
+    condition: t("effect.conditionAlways"),
+    actions: [t("effect.previewSelectTarget")],
+    warnings: [t("effect.inlineTargetRequired")],
+  }));
 
   const endpoint = characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`;
   const rootLabel = characterId ? t("common.rootCharacter") : t("common.rootTemplate");
@@ -54,6 +60,41 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   const patchFieldsForSelection = patchSlot ? commonStructuralFields : patchFields;
   const selectedPatchField = patchFieldsForSelection.find((field) => field.field === patchField) ?? patchFieldsForSelection[0] ?? null;
   const actionSummary = structuralActionSummary(operation, nodeSummary(nodes, targetNodeId, slots, rootLabel), t);
+
+  useEffect(() => {
+    refreshPreview();
+  }, [operation, nodeType, targetNodeId, patchField, patchMode, sourceKind, formKey, selectedPatchField]);
+
+  function refreshPreview() {
+    const form = formRef.current;
+    if (!form) return;
+    const data = new FormData(form);
+    const condition = readEffectCondition(data);
+    const currentTargetValue = String(data.get("targetNodeId") ?? targetNodeId);
+    const target = currentTargetValue === "__ROOT__" ? rootLabel : nodeSummary(nodes, currentTargetValue, slots, rootLabel);
+    const currentOperation = operation;
+    const warnings = currentTargetValue ? [] : [t("effect.inlineTargetRequired")];
+    let action = t("effect.previewSelectTarget");
+
+    if (currentOperation === "PATCH_NODE_PROPS") {
+      const field = String(data.get("patchField") || selectedPatchField?.field || "");
+      const label = fieldLabel(field, t);
+      const value = selectedPatchField?.derived && patchMode === "source"
+        ? sourceSummary(readSource(sourceKind, data), nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR"), slots, t)
+        : staticPatchPreviewValue(selectedPatchField, data, t);
+      action = target ? `${target}.${label} = ${value}` : t("effect.previewSelectTarget");
+    } else {
+      const createdName = String(data.get("createdNodeName") || "");
+      const createdType = currentOperation === "CREATE_GROUP" ? "GROUP" : nodeType;
+      action = target ? `${operationLabel(currentOperation, t)}: ${createdName || createdType} -> ${target}` : t("effect.previewSelectTarget");
+    }
+
+    setPreview({
+      condition: conditionExpressionSummary(condition, nodes, slots, t),
+      actions: [action],
+      warnings,
+    });
+  }
 
   useEffect(() => {
     if (!selectedPatchField) {
@@ -119,10 +160,10 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   }
 
   return (
-    <form key={formKey} action={submit} className="space-y-3">
+    <form key={formKey} ref={formRef} action={submit} className="space-y-3">
       <Input name="name" required placeholder={t("effect.name")} />
       <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
-        <EffectConditionBuilder nodes={nodes} slots={slots} />
+        <EffectConditionBuilder nodes={nodes} slots={slots} onConditionChange={refreshPreview} />
       </EffectEditorSection>
       <EffectEditorSection title={t("effect.action")} summary={actionSummary}>
         <select value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)} className={selectClass}>
@@ -185,14 +226,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
         </EffectEditorSection>
       )}
 
-      <EffectPreview
-        lines={[
-          targetNodeId ? actionSummary : t("effect.previewSelectTarget"),
-          operation === "PATCH_NODE_PROPS" && selectedPatchField ? `${t("effect.patchField")}: ${t(selectedPatchField.labelKey)}` : "",
-          operation !== "PATCH_NODE_PROPS" ? `${t("common.type")}: ${operation === "CREATE_GROUP" ? "GROUP" : nodeType}` : "",
-        ]}
-        warnings={!targetNodeId ? [t("effect.inlineTargetRequired")] : []}
-      />
+      <EffectPreview condition={preview.condition} actions={preview.actions} warnings={preview.warnings} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button disabled={pending}>
         <Plus className="h-4 w-4" />
@@ -317,4 +351,13 @@ function operationLabel(operation: "CREATE_NODE" | "CREATE_GROUP" | "PATCH_NODE_
 function structuralActionSummary(operation: "CREATE_NODE" | "CREATE_GROUP" | "PATCH_NODE_PROPS", target: string, t: ReturnType<typeof useI18n>["t"]) {
   const action = operationLabel(operation, t);
   return target ? `${action}: ${target}` : action;
+}
+
+function staticPatchPreviewValue(field: PatchFieldDefinition | null, data: FormData, t: ReturnType<typeof useI18n>["t"]) {
+  if (!field) return "...";
+  if (field.field === "icon") return String(data.get("icon") ?? "") || t("icons.label");
+  if (field.field === "accentColor") return String(data.get("patchTextValue") ?? "") || t("node.noAccentColor");
+  if (field.kind === "boolean") return data.get("patchBooleanValue") === "on" ? "true" : "false";
+  if (field.kind === "number") return String(data.get("patchNumberValue") ?? "") || "0";
+  return String(data.get("patchTextValue") ?? "") || "...";
 }
