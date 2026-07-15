@@ -10,7 +10,9 @@ import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
-import { FormulaSourceFields, readFormulaExpression } from "@/components/characters/formula-source-fields";
+import { EffectEditorSection } from "@/components/characters/effect-editor-section";
+import { EffectSourceEditor, readEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
+import { nodeSummary } from "@/components/characters/effect-summary";
 import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
 import { NodeIconPicker } from "@/components/characters/node-icons";
 import { NodePicker } from "@/components/characters/node-picker";
@@ -32,9 +34,10 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   const [targetNodeId, setTargetNodeId] = useState("");
   const [patchField, setPatchField] = useState("");
   const [patchMode, setPatchMode] = useState<"static" | "source">("static");
-  const [sourceKind, setSourceKind] = useState("node");
+  const [sourceKind, setSourceKind] = useState<EditableEffectSourceKind>("node");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [formKey, setFormKey] = useState(0);
 
   const endpoint = characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`;
   const rootLabel = characterId ? t("common.rootCharacter") : t("common.rootTemplate");
@@ -108,33 +111,40 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
     setTargetNodeId("");
     setPatchField("");
     setPatchMode("static");
+    setSourceKind("node");
+    setFormKey((current) => current + 1);
     router.refresh();
   }
 
   return (
-    <form action={submit} className="space-y-3">
+    <form key={formKey} action={submit} className="space-y-3">
       <Input name="name" required placeholder={t("effect.name")} />
-      <select value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)} className={selectClass}>
-        <option value="CREATE_NODE">{t("effect.createNode")}</option>
-        <option value="CREATE_GROUP">{t("effect.createGroup")}</option>
-        <option value="PATCH_NODE_PROPS">{t("effect.patchNode")}</option>
-      </select>
-      <NodePicker
-        name="targetNodeId"
-        nodes={operation === "PATCH_NODE_PROPS" ? nodes : containers}
-        value={targetNodeId}
-        onChange={setTargetNodeId}
-        extraOptions={operation === "PATCH_NODE_PROPS" ? patchSlotOptions : containerSlotOptions}
-        allowedTypes={operation === "PATCH_NODE_PROPS" ? undefined : ["CONTAINER", "GROUP"]}
-        includeRoot={operation !== "PATCH_NODE_PROPS"}
-        rootValue="__ROOT__"
-        rootLabel={rootLabel}
-        required
-        placeholder={operation === "PATCH_NODE_PROPS" ? t("effect.patchTarget") : t("effect.place")}
-      />
+      <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
+        <EffectConditionBuilder nodes={nodes} slots={slots} />
+      </EffectEditorSection>
+      <EffectEditorSection title={t("effect.action")} summary={structuralActionSummary(operation, nodeSummary(nodes, targetNodeId, slots, rootLabel), t)}>
+        <select value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)} className={selectClass}>
+          <option value="CREATE_NODE">{t("effect.createNode")}</option>
+          <option value="CREATE_GROUP">{t("effect.createGroup")}</option>
+          <option value="PATCH_NODE_PROPS">{t("effect.patchNode")}</option>
+        </select>
+        <NodePicker
+          name="targetNodeId"
+          nodes={operation === "PATCH_NODE_PROPS" ? nodes : containers}
+          value={targetNodeId}
+          onChange={setTargetNodeId}
+          extraOptions={operation === "PATCH_NODE_PROPS" ? patchSlotOptions : containerSlotOptions}
+          allowedTypes={operation === "PATCH_NODE_PROPS" ? undefined : ["CONTAINER", "GROUP"]}
+          includeRoot={operation !== "PATCH_NODE_PROPS"}
+          rootValue="__ROOT__"
+          rootLabel={rootLabel}
+          required
+          placeholder={operation === "PATCH_NODE_PROPS" ? t("effect.patchTarget") : t("effect.place")}
+        />
+      </EffectEditorSection>
 
       {operation !== "PATCH_NODE_PROPS" ? (
-        <>
+        <EffectEditorSection title={t("effect.createdNodeName")} summary={`${operation === "CREATE_GROUP" ? "GROUP" : nodeType} -> ${nodeSummary(nodes, targetNodeId, slots, rootLabel) || rootLabel}`}>
           <Input name="createdNodeName" required placeholder={t("effect.createdNodeName")} />
           {operation === "CREATE_NODE" && (
             <select value={nodeType} onChange={(event) => setNodeType(event.target.value as NodeType)} className={selectClass}>
@@ -142,34 +152,37 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
             </select>
           )}
           <Input name="description" placeholder={t("common.description")} />
-          <label className="flex items-center gap-2 text-sm">
-            <input name="collapsedByDefault" type="checkbox" />
-            {t("node.collapsedDefault")}
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input name="hiddenFromPlayer" type="checkbox" />
-            {t("node.hiddenFromPlayer")}
-          </label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input name="collapsedByDefault" type="checkbox" />
+              {t("node.collapsedDefault")}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input name="hiddenFromPlayer" type="checkbox" />
+              {t("node.hiddenFromPlayer")}
+            </label>
+          </div>
           <NodeIconPicker type={operation === "CREATE_GROUP" ? "GROUP" : nodeType} />
           <NodeAccentColorPicker />
-        </>
+        </EffectEditorSection>
       ) : (
-        <PatchControls
-          fields={patchFields}
-          selectedField={selectedPatchField}
-          value={patchField}
-          onFieldChange={setPatchField}
-          mode={patchMode}
-          onModeChange={setPatchMode}
-          sourceKind={sourceKind}
-          onSourceKindChange={setSourceKind}
-          numericNodes={nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR")}
-          numericSlots={slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"))}
-          targetType={patchTarget?.type}
-        />
+        <EffectEditorSection title={t("effect.patchNode")} summary={selectedPatchField ? t(selectedPatchField.labelKey) : t("effect.selectPatchTargetFirst")}>
+          <PatchControls
+            fields={patchFields}
+            selectedField={selectedPatchField}
+            value={patchField}
+            onFieldChange={setPatchField}
+            mode={patchMode}
+            onModeChange={setPatchMode}
+            sourceKind={sourceKind}
+            onSourceKindChange={setSourceKind}
+            numericNodes={nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR")}
+            numericSlots={slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"))}
+            targetType={patchTarget?.type}
+          />
+        </EffectEditorSection>
       )}
 
-      <EffectConditionBuilder nodes={nodes} slots={slots} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button disabled={pending}>
         <Plus className="h-4 w-4" />
@@ -198,8 +211,8 @@ function PatchControls({
   onFieldChange: (field: string) => void;
   mode: "static" | "source";
   onModeChange: (mode: "static" | "source") => void;
-  sourceKind: string;
-  onSourceKindChange: (kind: string) => void;
+  sourceKind: EditableEffectSourceKind;
+  onSourceKindChange: (kind: EditableEffectSourceKind) => void;
   numericNodes: CharacterNodeModel[];
   numericSlots: TemplateSlotModel[];
   targetType?: NodeType;
@@ -219,7 +232,7 @@ function PatchControls({
         </select>
       )}
       {mode === "source" && selectedField.derived
-        ? <SourceFields nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={onSourceKindChange} />
+        ? <EffectSourceEditor kind={sourceKind} onKindChange={onSourceKindChange} nodes={numericNodes} slots={numericSlots} />
         : <StaticPatchField field={selectedField} targetType={targetType} />}
     </div>
   );
@@ -241,27 +254,6 @@ function StaticPatchField({ field, targetType }: { field: PatchFieldDefinition; 
     return <Input name="patchTextValue" placeholder={t(field.labelKey)} />;
   }
   return <Input name="patchNumberValue" type="number" step="any" required placeholder={t(field.labelKey)} />;
-}
-
-function SourceFields({ nodes, slots, kind, setKind }: { nodes: CharacterNodeModel[]; slots: TemplateSlotModel[]; kind: string; setKind: (kind: string) => void }) {
-  const { t } = useI18n();
-  const slotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
-  return (
-    <div className="space-y-2">
-      <select value={kind} onChange={(event) => setKind(event.target.value)} className={selectClass}>
-        <option value="number">{t("effect.sourceNumber")}</option>
-        <option value="node">{t("effect.sourceNode")}</option>
-        <option value="formula">{t("effect.sourceFormula")}</option>
-      </select>
-      {kind === "number" ? (
-        <Input name="sourceValue" type="number" step="any" required placeholder={t("common.value")} />
-      ) : kind === "node" ? (
-        <NodePicker name="sourceNodeId" nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} />
-      ) : (
-        <FormulaSourceFields nodes={nodes} slots={slots} />
-      )}
-    </div>
-  );
 }
 
 function defaultData(type: NodeType, description: string, icon: string, accentColor: string, collapsedByDefault = false, hiddenFromPlayer = false) {
@@ -287,13 +279,8 @@ function readStaticPatch(field: PatchFieldDefinition, data: FormData) {
   return { [field.field]: String(data.get("patchTextValue") ?? "") };
 }
 
-function readSource(kind: string, data: FormData): EffectSource {
-  if (kind === "number") return { kind: "number", value: Number(data.get("sourceValue")) };
-  if (kind === "node") return readNodeOrSlotSource(String(data.get("sourceNodeId")));
-  return {
-    kind: "formula",
-    expression: readFormulaExpression(data),
-  };
+function readSource(kind: EditableEffectSourceKind, data: FormData): EffectSource {
+  return readEditableEffectSource(data, kind);
 }
 
 const commonStructuralFields: PatchFieldDefinition[] = [
@@ -310,8 +297,14 @@ function parseTemplateSelectValue(value: string) {
     : { kind: "node" as const, id: value };
 }
 
-function readNodeOrSlotSource(value: string): EffectSource {
-  const parsed = parseTemplateSelectValue(value);
-  if (parsed.kind === "slot") return { kind: "templateSlot", slotId: parsed.id, field: "value" };
-  return { kind: "node", nodeId: parsed.id, field: "value" };
+
+function operationLabel(operation: "CREATE_NODE" | "CREATE_GROUP" | "PATCH_NODE_PROPS", t: ReturnType<typeof useI18n>["t"]) {
+  if (operation === "CREATE_GROUP") return t("effect.createGroup");
+  if (operation === "PATCH_NODE_PROPS") return t("effect.patchNode");
+  return t("effect.createNode");
+}
+
+function structuralActionSummary(operation: "CREATE_NODE" | "CREATE_GROUP" | "PATCH_NODE_PROPS", target: string, t: ReturnType<typeof useI18n>["t"]) {
+  const action = operationLabel(operation, t);
+  return target ? `${action}: ${target}` : action;
 }

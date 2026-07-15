@@ -32,34 +32,42 @@ export function FormulaSourceFields({
   const slotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
 
   return (
-    <div className="space-y-2">
-      <FormulaOperandFields
-        prefix={`${prefix}Left`}
-        kind={leftKind}
-        setKind={setLeftKind}
-        nodes={nodes}
-        slotOptions={slotOptions}
-        defaultOperand={simple?.left}
-      />
-      <select name={`${prefix}Operator`} defaultValue={simple?.kind ?? "multiply"} className={selectClass}>
-        <option value="add">+</option>
-        <option value="subtract">-</option>
-        <option value="multiply">x</option>
-        <option value="divide">/</option>
-      </select>
-      <FormulaOperandFields
-        prefix={`${prefix}Right`}
-        kind={rightKind}
-        setKind={setRightKind}
-        nodes={nodes}
-        slotOptions={slotOptions}
-        defaultOperand={simple?.right}
-      />
+    <div className="rounded-md border bg-muted/20 p-2">
+      <div className="space-y-2">
+        <FormulaOperandFields
+          label={t("effect.leftOperand")}
+          prefix={`${prefix}Left`}
+          kind={leftKind}
+          setKind={setLeftKind}
+          nodes={nodes}
+          slotOptions={slotOptions}
+          defaultOperand={simple?.left}
+        />
+        <label className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-2 text-xs font-medium text-muted-foreground">
+          <span className="text-right">{t("effect.operator")}</span>
+          <select name={`${prefix}Operator`} defaultValue={simple?.kind ?? "multiply"} className="h-9 w-24 rounded-md border bg-background px-3 text-sm text-foreground">
+            <option value="add">+</option>
+            <option value="subtract">-</option>
+            <option value="multiply">x</option>
+            <option value="divide">/</option>
+          </select>
+        </label>
+        <FormulaOperandFields
+          label={t("effect.rightOperand")}
+          prefix={`${prefix}Right`}
+          kind={rightKind}
+          setKind={setRightKind}
+          nodes={nodes}
+          slotOptions={slotOptions}
+          defaultOperand={simple?.right}
+        />
+      </div>
     </div>
   );
 }
 
 function FormulaOperandFields({
+  label,
   prefix,
   kind,
   setKind,
@@ -67,6 +75,7 @@ function FormulaOperandFields({
   slotOptions,
   defaultOperand,
 }: {
+  label: string;
   prefix: string;
   kind: OperandKind;
   setKind: (kind: OperandKind) => void;
@@ -76,11 +85,14 @@ function FormulaOperandFields({
 }) {
   const { t } = useI18n();
   return (
-    <div className="space-y-2 rounded-md border bg-muted/20 p-2">
-      <select name={`${prefix}Kind`} value={kind} onChange={(event) => setKind(event.target.value as OperandKind)} className={selectClass}>
-        <option value="number">{t("effect.number")}</option>
-        <option value="node">{t("node.label")}</option>
-      </select>
+    <div className="min-w-0 space-y-2 rounded-md border bg-background p-2">
+      <label className="grid gap-2 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:items-center text-xs font-medium text-muted-foreground">
+        <span className="sm:text-right">{label}</span>
+        <select name={`${prefix}Kind`} value={kind} onChange={(event) => setKind(event.target.value as OperandKind)} className={selectClass}>
+          <option value="number">{t("effect.number")}</option>
+          <option value="node">{t("node.label")}</option>
+        </select>
+      </label>
       {kind === "number" ? (
         <div>
           <Input name={`${prefix}Value`} type="number" step="any" required defaultValue={defaultOperand?.kind === "const" ? defaultOperand.value : 0} />
@@ -95,10 +107,14 @@ function FormulaOperandFields({
             required
             defaultValue={operandNodeValue(defaultOperand)}
             placeholder={t("effect.selectNode")}
+            compact
           />
-          <select name={`${prefix}Field`} defaultValue={operandField(defaultOperand)} className={selectClass}>
-            {selectableNumericFields.map((field) => <option key={field} value={field}>{fieldLabel(field, t)}</option>)}
-          </select>
+          <label className="grid gap-2 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:items-center text-xs font-medium text-muted-foreground">
+            <span className="sm:text-right">{t("effect.numericField")}</span>
+            <select name={`${prefix}Field`} defaultValue={operandField(defaultOperand)} className={selectClass}>
+              {selectableNumericFields.map((field) => <option key={field} value={field}>{fieldLabel(field, t)}</option>)}
+            </select>
+          </label>
         </div>
       )}
     </div>

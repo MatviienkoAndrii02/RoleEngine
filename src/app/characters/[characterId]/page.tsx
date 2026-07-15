@@ -7,9 +7,7 @@ import { DependencyEngine, type NodeCalculation } from "@/engine/dependency-engi
 import { CharacterTree } from "@/components/characters/character-tree";
 import { CharacterLiveRefresh } from "@/components/characters/character-live-refresh";
 import { NodeEditor } from "@/components/characters/node-editor";
-import { NumericEffectBuilder } from "@/components/characters/numeric-effect-builder";
-import { StructuralEffectBuilder } from "@/components/characters/structural-effect-builder";
-import { TriggeredEffectBuilder } from "@/components/characters/triggered-effect-builder";
+import { EffectComposer } from "@/components/characters/effect-composer";
 import { EffectManager } from "@/components/characters/effect-manager";
 import { CharacterSettings } from "@/components/characters/character-settings";
 import { SidebarSection } from "@/components/characters/sidebar-section";
@@ -205,18 +203,8 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
             </SidebarSection>
           )}
           {canEdit && (
-            <SidebarSection id="numeric-effects" title={t("character.numericEffects")}>
-              <NumericEffectBuilder characterId={characterId} nodes={nodes} />
-            </SidebarSection>
-          )}
-          {canEdit && (
-            <SidebarSection id="structural-effects" title={t("character.structuralEffects")}>
-              <StructuralEffectBuilder characterId={characterId} nodes={nodes} />
-            </SidebarSection>
-          )}
-          {canEdit && (
-            <SidebarSection id="triggered-effects" title={t("character.triggeredEffects")}>
-              <TriggeredEffectBuilder characterId={characterId} nodes={nodes} />
+            <SidebarSection id="effect-composer" title={t("effect.addEffect")}>
+              <EffectComposer characterId={characterId} nodes={nodes} />
             </SidebarSection>
           )}
           {canEdit && (

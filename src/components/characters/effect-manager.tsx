@@ -12,19 +12,38 @@ import {
   type EffectDefinition,
   type EffectSource,
   type FormulaExpression,
+  type TriggeredEffectAction,
 } from "@/domain/effects";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FormulaSourceFields, readFormulaExpression } from "@/components/characters/formula-source-fields";
+import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
+import { EffectEditorSection } from "@/components/characters/effect-editor-section";
+import { EffectSourceEditor, readEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
+import {
+  conditionExpressionSummary,
+  nodeSummary,
+  numericEffectSummary,
+  sourceSummary,
+  targetSummary,
+  triggeredActionSummary,
+} from "@/components/characters/effect-summary";
 import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
 import { NodeIconPicker } from "@/components/characters/node-icons";
 import { NodePicker } from "@/components/characters/node-picker";
+import {
+  newTriggeredActionRow,
+  readTriggeredAction,
+  TriggeredActionEditor,
+  triggeredActionToRow,
+  type TriggeredActionRow,
+} from "@/components/characters/triggered-action-editor";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 
 type EffectItem = EffectDefinition & { createdAt?: string | Date; updatedAt?: string | Date };
 type Operation = EffectDefinition["operation"];
+type TriggerKind = "condition" | "nodeClick";
 
 const numericOperations: Operation[] = ["ADD", "SUBTRACT", "MULTIPLY", "PERCENT_BONUS", "SET_BAR_MAX"];
 const structuralOperations: Operation[] = ["CREATE_NODE", "CREATE_GROUP", "PATCH_NODE_PROPS"];
@@ -139,12 +158,16 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   const initialOperation = effect.operation;
   const [operation, setOperation] = useState<Operation>(initialOperation);
   const [sourceKind, setSourceKind] = useState(initialSourceKind(effect.source));
-  const [conditionKind, setConditionKind] = useState(initialConditionKind(effect.condition));
   const initialTargetId = targetNodeId(effect) ?? "";
   const [selectedTargetId, setSelectedTargetId] = useState(initialTargetId);
   const [patchMode, setPatchMode] = useState<"static" | "source">(effect.payload?.patchFromSource ? "source" : "static");
   const initialPayload = effect.payload?.createNode;
   const [createdType, setCreatedType] = useState<NodeType>(initialPayload?.type ?? "NUMBER");
+  const triggeredPayload = effect.payload?.triggered;
+  const [triggerKind, setTriggerKind] = useState<TriggerKind>(triggeredPayload?.trigger.kind ?? "condition");
+  const [triggerNodeId, setTriggerNodeId] = useState(triggeredPayload?.trigger.kind === "nodeClick" ? triggeredPayload.trigger.nodeId : "");
+  const triggerCondition = triggeredPayload?.trigger.condition ?? { kind: "always" as const };
+  const [triggerRows, setTriggerRows] = useState<TriggeredActionRow[]>(() => triggeredPayload?.actions.length ? triggeredPayload.actions.map(triggeredActionToRow) : [newTriggeredActionRow()]);
   const numericNodes = nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR");
   const numericSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"));
   const containers = nodes.filter((node) => node.type === "CONTAINER" || node.type === "GROUP");
@@ -184,14 +207,20 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
 
   function submit(formData: FormData) {
     if (effect.operation === "TRIGGERED") {
+      const triggerConditionValue = readEffectCondition(formData, "triggerEdit", triggerCondition);
       onSave({
         name: String(formData.get("name")),
         enabled: formData.get("enabled") === "on",
         priority: Number(formData.get("priority")),
+        operation: "TRIGGERED",
+        trigger: triggerKind === "nodeClick"
+          ? { kind: "nodeClick", nodeId: String(formData.get("triggerNodeId") ?? ""), condition: triggerConditionValue }
+          : { kind: "condition", condition: triggerConditionValue },
+        actions: triggerRows.map((row, index) => readTriggeredAction(row, formData, index, nodes, "edit-action")),
       });
       return;
     }
-    const condition = readCondition(conditionKind, formData, effect.condition);
+    const condition = readEffectCondition(formData, "condition", effect.condition);
     const common = {
       name: String(formData.get("name")),
       enabled: formData.get("enabled") === "on",
@@ -221,41 +250,113 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   return (
     <form action={submit} className="space-y-4 border-t pt-4">
       <div className="flex items-center justify-between gap-3"><h3 className="font-medium">{t("effect.edit")}</h3><Button type="button" size="icon" variant="ghost" onClick={onCancel} aria-label={t("effect.closeEditor")}><X className="h-4 w-4" /></Button></div>
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_88px]">
-        <Field label={t("common.name")} name="name" required defaultValue={effect.name} />
-        <Field label={t("effect.priority")} name="priority" type="number" required defaultValue={effect.priority} />
-      </div>
-      <label className="flex items-center gap-2 text-sm"><input name="enabled" type="checkbox" defaultChecked={effect.enabled} />{t("effect.enabled")}</label>
+      <EffectEditorSection title={t("effect.basics")} summary={effect.name}>
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_88px]">
+          <Field label={t("common.name")} name="name" required defaultValue={effect.name} />
+          <Field label={t("effect.priority")} name="priority" type="number" required defaultValue={effect.priority} />
+        </div>
+        <label className="flex items-center gap-2 text-sm"><input name="enabled" type="checkbox" defaultChecked={effect.enabled} />{t("effect.enabled")}</label>
+      </EffectEditorSection>
+      {effect.operation !== "TRIGGERED" && (
+        <EffectEditorSection title={t("effect.condition")} summary={conditionExpressionSummary(effect.condition, nodes, slots, t)} defaultOpen={false}>
+          <EffectConditionBuilder nodes={nodes} slots={slots} condition={effect.condition} allowCurrent />
+        </EffectEditorSection>
+      )}
       {effect.operation === "TRIGGERED" ? (
-        <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">{t("effect.triggeredMetadataOnly")}</p>
+        <>
+        <EffectEditorSection title={t("effect.trigger")} summary={triggerSummary(triggerKind, triggerNodeId, triggerCondition, nodes, slots, t)}>
+          <select value={triggerKind} onChange={(event) => setTriggerKind(event.target.value as TriggerKind)} className={selectClass}>
+            <option value="condition">{t("effect.triggerCondition")}</option>
+            <option value="nodeClick">{t("effect.triggerNodeClick")}</option>
+          </select>
+          {triggerKind === "nodeClick" && (
+            <NodePicker
+              name="triggerNodeId"
+              nodes={nodes}
+              value={triggerNodeId}
+              onChange={setTriggerNodeId}
+              required
+              placeholder={t("effect.triggerNode")}
+            />
+          )}
+          <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="triggerEdit" condition={triggerCondition} allowCurrent />
+        </EffectEditorSection>
+        <EffectEditorSection title={t("effect.triggerActions")} summary={triggeredActionsSummary(triggeredPayload?.actions ?? [], triggerRows.length, nodes, slots, t, rootLabel)}>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">{t("effect.actionsCount", { count: triggerRows.length })}</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => setTriggerRows((current) => [...current, newTriggeredActionRow()])}>
+              {t("effect.addAction")}
+            </Button>
+          </div>
+          {triggerRows.map((row, index) => (
+            <TriggeredActionEditor
+              key={row.id}
+              row={row}
+              index={index}
+              rowsCount={triggerRows.length}
+              nodes={nodes}
+              slots={slots}
+              numericNodes={numericNodes}
+              containers={containers}
+              numericSlotOptions={numericSlotOptions}
+              containerSlotOptions={containerSlotOptions}
+              allSlotOptions={allSlotOptions}
+              rootLabel={rootLabel}
+              fieldNamespace="edit-action"
+              originalAction={triggeredPayload?.actions[index]}
+              setRows={setTriggerRows}
+              defaultOpen={index === 0}
+            />
+          ))}
+        </EffectEditorSection>
+        </>
       ) : (
-        <Labeled label={t("effect.operation")}><select value={operation} onChange={(event) => setOperation(event.target.value as Operation)} className={selectClass}>{[...numericOperations, ...structuralOperations].map((item) => <option key={item} value={item}>{operationLabel(item, t)}</option>)}</select></Labeled>
+        <EffectEditorSection title={t("effect.definition")} summary={definitionSummary(effect, operation, selectedTargetId, nodes, slots, rootLabel, t)}>
+          <Labeled label={t("effect.operation")}>
+            <select
+              value={operation}
+              onChange={(event) => {
+                const nextOperation = event.target.value as Operation;
+                if (nextOperation === operation) return;
+                if (!window.confirm(t("effect.changeOperationConfirm"))) {
+                  event.target.value = operation;
+                  return;
+                }
+                setOperation(nextOperation);
+                setSelectedTargetId("");
+                setPatchField("");
+                setPatchMode("static");
+              }}
+              className={selectClass}
+            >
+              {[...numericOperations, ...structuralOperations].map((item) => <option key={item} value={item}>{operationLabel(item, t)}</option>)}
+            </select>
+          </Labeled>
+          <Labeled label={t("effect.target")}>
+            <NodePicker
+              name="targetNodeId"
+              nodes={isNumeric ? numericNodes : isPatch ? nodes : containers}
+              value={actualSelectedTargetId}
+              onChange={setSelectedTargetId}
+              extraOptions={isNumeric ? numericSlotOptions : isPatch ? allSlotOptions : containerSlotOptions}
+              allowedTypes={isNumeric ? ["NUMBER", "BAR"] : isPatch ? undefined : ["CONTAINER", "GROUP"]}
+              includeRoot={!isNumeric && !isPatch}
+              rootValue="__ROOT__"
+              rootLabel={rootLabel}
+              required
+              placeholder={t("effect.selectTarget")}
+            />
+          </Labeled>
+          {isNumeric && <Labeled label={t("effect.numericField")}><select name="numericField" required value={numericField} onChange={(event) => setNumericField(event.target.value)} className={selectClass}><option value="">{t("effect.numericField")}</option>{numericFields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}</select></Labeled>}
+        </EffectEditorSection>
       )}
       {effect.operation !== "TRIGGERED" && (
-      <>
-      <Labeled label={t("effect.target")}>
-        <NodePicker
-          name="targetNodeId"
-          nodes={isNumeric ? numericNodes : isPatch ? nodes : containers}
-          value={actualSelectedTargetId}
-          onChange={setSelectedTargetId}
-          extraOptions={isNumeric ? numericSlotOptions : isPatch ? allSlotOptions : containerSlotOptions}
-          allowedTypes={isNumeric ? ["NUMBER", "BAR"] : isPatch ? undefined : ["CONTAINER", "GROUP"]}
-          includeRoot={!isNumeric && !isPatch}
-          rootValue="__ROOT__"
-          rootLabel={rootLabel}
-          required
-          placeholder={t("effect.selectTarget")}
-        />
-      </Labeled>
-      {isNumeric && <Labeled label={t("effect.numericField")}><select name="numericField" required value={numericField} onChange={(event) => setNumericField(event.target.value)} className={selectClass}><option value="">{t("effect.numericField")}</option>{numericFields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}</select></Labeled>}
-
-      {isNumeric && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} />}
-      <ConditionFields condition={effect.condition} nodes={nodes} slots={slots} kind={conditionKind} setKind={setConditionKind} />
-      {!isNumeric && !isPatch && <CreatedNodeFields payload={initialPayload} operation={operation} type={createdType} setType={setCreatedType} />}
-      {isPatch && <PatchFields fields={patchFields} selectedField={selectedPatchField} value={patchField} setValue={setPatchField} patch={effect.payload?.patch} mode={patchMode} setMode={setPatchMode} targetType={selectedTarget?.type} />}
-      {isPatch && patchMode === "source" && selectedPatchField?.derived && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} />}
-      </>
+      <EffectEditorSection title={payloadSectionTitle(isNumeric, isPatch, t)} summary={payloadSummary(effect, isNumeric, isPatch, sourceKind, selectedPatchField, operation, nodes, slots, rootLabel, t)}>
+        {isNumeric && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} />}
+        {!isNumeric && !isPatch && <CreatedNodeFields payload={initialPayload} operation={operation} type={createdType} setType={setCreatedType} />}
+        {isPatch && <PatchFields fields={patchFields} selectedField={selectedPatchField} value={patchField} setValue={setPatchField} patch={effect.payload?.patch} mode={patchMode} setMode={setPatchMode} targetType={selectedTarget?.type} />}
+        {isPatch && patchMode === "source" && selectedPatchField?.derived && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} />}
+      </EffectEditorSection>
       )}
 
       <div className="flex w-full flex-wrap gap-2"><Button type="submit" disabled={pending}><Save className="h-4 w-4" />{pending ? t("common.saving") : t("common.save")}</Button><Button type="button" variant="ghost" disabled={pending} onClick={onCancel}><X className="h-4 w-4" />{t("common.cancel")}</Button><Button type="button" variant="outline" className="ml-auto border-destructive/40 text-destructive hover:bg-destructive/10" disabled={pending} onClick={onDelete}><Trash2 className="h-4 w-4" />{t("effect.delete")}</Button></div>
@@ -266,20 +367,30 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
 function SourceFields({ effect, nodes, slots, kind, setKind }: { effect: EffectItem; nodes: CharacterNodeModel[]; slots: TemplateSlotModel[]; kind: string; setKind: (kind: string) => void }) {
   const { t } = useI18n();
   const source = effect.source;
-  const formula = source.kind === "formula" ? source.expression : null;
-  const simpleFormula = formula && isSimpleFormula(formula) ? formula : null;
-  return <div className="space-y-3"><Labeled label={t("effect.source")}><select value={kind} onChange={(event) => setKind(event.target.value)} className={selectClass}>{!isEditableSource(source) && <option value="current">{t("effect.currentComplexSource")}</option>}<option value="number">{t("effect.number")}</option><option value="node">{t("effect.otherNode")}</option><option value="formula">{t("effect.formulaNodeNumber")}</option></select></Labeled>{kind === "number" && <Field label={t("common.value")} name="sourceValue" type="number" step="any" required defaultValue={source.kind === "number" ? source.value : 0} />}{kind === "node" && <NodeSelect label={t("effect.nodeSource")} name="sourceNodeId" nodes={nodes} slots={slots} defaultValue={source.kind === "node" ? source.nodeId : source.kind === "templateSlot" ? `slot:${source.slotId}` : ""} />}{kind === "formula" && <FormulaSourceFields nodes={nodes} slots={slots} defaultExpression={simpleFormula} />}</div>;
-}
+  if (kind === "current") {
+    return (
+      <Labeled label={t("effect.source")}>
+        <select value={kind} onChange={(event) => setKind(event.target.value)} className={selectClass}>
+          <option value="current">{t("effect.currentComplexSource")}</option>
+          <option value="number">{t("effect.sourceNumber")}</option>
+          <option value="node">{t("effect.sourceNode")}</option>
+          <option value="formula">{t("effect.sourceFormula")}</option>
+        </select>
+      </Labeled>
+    );
+  }
 
-function ConditionFields({ condition, nodes, slots, kind, setKind }: { condition: EffectCondition; nodes: CharacterNodeModel[]; slots: TemplateSlotModel[]; kind: string; setKind: (kind: string) => void }) {
-  const { t } = useI18n();
-  const editable = condition.kind === "always" || condition.kind === "fieldExists" || (condition.kind === "compare" && isEditableConditionSource(condition.value));
-  const nodeId = condition.kind === "fieldExists" || condition.kind === "compare" ? condition.nodeId : "";
-  const [valueKind, setValueKind] = useState<"number" | "node">(condition.kind === "compare" && condition.value.kind !== "number" ? "node" : "number");
-  const value = condition.kind === "compare" && condition.value.kind === "number" ? condition.value.value : 0;
-  const sourceNodeId = condition.kind === "compare" ? conditionSourceNodeValue(condition.value) : "";
-  const sourceField = condition.kind === "compare" ? conditionSourceField(condition.value) : "value";
-  return <div className="space-y-3"><Labeled label={t("effect.condition")}><select value={kind} onChange={(event) => setKind(event.target.value)} className={selectClass}>{!editable && <option value="current">{t("effect.currentComplexCondition")}</option>}<option value="always">{t("effect.conditionAlways")}</option><option value="exists">{t("effect.conditionExists")}</option><option value="gt">{t("effect.conditionGt")}</option><option value="lt">{t("effect.conditionLt")}</option><option value="eq">{t("effect.conditionEq")}</option></select></Labeled>{kind !== "always" && kind !== "current" && <div className="space-y-2"><NodeSelect label={t("effect.field")} name="conditionNodeId" nodes={nodes} defaultValue={nodeId} />{kind !== "exists" && <div className="space-y-2 rounded-md border bg-muted/20 p-2"><select name="conditionValueKind" value={valueKind} onChange={(event) => setValueKind(event.target.value as "number" | "node")} className={selectClass}><option value="number">{t("effect.sourceNumber")}</option><option value="node">{t("effect.sourceNode")}</option></select>{valueKind === "number" ? <Field label={t("common.value")} name="conditionValue" type="number" step="any" required defaultValue={value} /> : <><NodeSelect label={t("effect.selectNode")} name="conditionValueNodeId" nodes={nodes} slots={slots} defaultValue={sourceNodeId} /><Labeled label={t("effect.numericField")}><select name="conditionValueField" defaultValue={sourceField} className={selectClass}>{commonNumericFields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}</select></Labeled></>}</div>}</div>}</div>;
+  return (
+    <Labeled label={t("effect.source")}>
+      <EffectSourceEditor
+        kind={kind as EditableEffectSourceKind}
+        onKindChange={setKind}
+        nodes={nodes}
+        slots={slots}
+        defaultSource={source}
+      />
+    </Labeled>
+  );
 }
 
 function CreatedNodeFields({ payload, operation, type, setType }: { payload?: EffectDefinition["payload"] extends infer _ ? NonNullable<EffectDefinition["payload"]>["createNode"] : never; operation: Operation; type: NodeType; setType: (type: NodeType) => void }) {
@@ -387,10 +498,22 @@ function StaticPatchField({ field, patch, targetType }: { field: PatchFieldDefin
   return <Field label={t(field.labelKey)} name="patchNumberValue" type="number" step="any" defaultValue={value == null ? "" : String(value)} />;
 }
 
+function PrefixedStaticPatchField({ field, patch, targetType, prefix }: { field: PatchFieldDefinition; patch: Record<string, unknown>; targetType?: NodeType; prefix: string }) {
+  const { t } = useI18n();
+  const value = patch[field.field];
+  if (field.field === "icon" && targetType) return <NodeIconPicker type={targetType} name={`${prefix}-patchIcon`} defaultValue={typeof value === "string" ? value : undefined} />;
+  if (field.field === "accentColor") return <NodeAccentColorPicker name={`${prefix}-patchTextValue`} defaultValue={typeof value === "string" ? value : undefined} />;
+  if (field.kind === "boolean") {
+    return <label className="flex items-center gap-2 text-sm"><input name={`${prefix}-patchBooleanValue`} type="checkbox" defaultChecked={Boolean(value)} />{t(field.labelKey)}</label>;
+  }
+  if (field.kind === "text") {
+    return <Field label={t(field.labelKey)} name={`${prefix}-patchTextValue`} defaultValue={value == null ? "" : String(value)} />;
+  }
+  return <Field label={t(field.labelKey)} name={`${prefix}-patchNumberValue`} type="number" step="any" defaultValue={value == null ? "" : String(value)} />;
+}
+
 function Field({ label, ...props }: React.ComponentProps<typeof Input> & { label: string }) { return <Labeled label={label}><Input {...props} /></Labeled>; }
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block space-y-2 text-sm font-medium"><span>{label}</span>{children}</label>; }
-function NodeSelect({ label, name, nodes, slots = [], defaultValue, compact = false }: { label: string; name: string; nodes: CharacterNodeModel[]; slots?: TemplateSlotModel[]; defaultValue: string; compact?: boolean }) { const { t } = useI18n(); const slotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) })); return <Labeled label={label}><NodePicker name={name} nodes={nodes} extraOptions={slotOptions} defaultValue={defaultValue} required placeholder={t("effect.selectNode")} />{compact ? null : null}</Labeled>; }
-
 function targetNodeId(effect: EffectDefinition) { if (effect.target.kind === "node") return effect.target.nodeId; if (effect.target.kind === "templateSlot") return `slot:${effect.target.slotId}`; if (effect.target.kind === "parent") return effect.target.parentNodeId; return null; }
 function initialPatchField(effect: EffectDefinition, fields: PatchFieldDefinition[]) {
   if (effect.payload?.patchFromSource?.field) return effect.payload.patchFromSource.field;
@@ -406,28 +529,10 @@ function initialNumericField(effect: EffectDefinition, fields: PatchFieldDefinit
 function initialSourceKind(source: EffectSource) { if (source.kind === "templateSlot") return "node"; return isEditableSource(source) ? source.kind : "current"; }
 function isEditableSource(source: EffectSource) { return source.kind !== "formula" || isSimpleFormula(source.expression); }
 function isSimpleFormula(expression: FormulaExpression): expression is Extract<FormulaExpression, { kind: "add" | "subtract" | "multiply" | "divide" }> { return ["add", "subtract", "multiply", "divide"].includes(expression.kind) && "left" in expression && "right" in expression; }
-function initialConditionKind(condition: EffectCondition) { if (condition.kind === "always") return "always"; if (condition.kind === "fieldExists") return "exists"; if (condition.kind === "compare" && isEditableConditionSource(condition.value)) return condition.operator; return "current"; }
-function readCondition(kind: string, data: FormData, current: EffectCondition): EffectCondition { if (kind === "current") return current; if (kind === "always") return { kind: "always" }; const nodeId = String(data.get("conditionNodeId")); if (kind === "exists") return { kind: "fieldExists", nodeId }; return { kind: "compare", nodeId, operator: kind as "gt" | "lt" | "eq", value: readConditionValue(data) }; }
-function isEditableConditionSource(source: EffectSource) { return source.kind === "number" || source.kind === "node" || source.kind === "templateSlot"; }
-function conditionSourceNodeValue(source: EffectSource) {
-  if (source.kind === "templateSlot") return `slot:${source.slotId}`;
-  if (source.kind === "node") return source.nodeId;
-  return "";
+function readSource(kind: string, data: FormData, current: EffectSource): EffectSource {
+  if (kind === "current") return current;
+  return readEditableEffectSource(data, kind as EditableEffectSourceKind);
 }
-function conditionSourceField(source: EffectSource): "value" | "current" | "min" | "max" {
-  if (source.kind === "templateSlot" || source.kind === "node") return source.field ?? "value";
-  return "value";
-}
-function readConditionValue(data: FormData): EffectSource {
-  const kind = String(data.get("conditionValueKind") || "number");
-  if (kind === "number") return { kind: "number", value: Number(data.get("conditionValue")) };
-  const value = String(data.get("conditionValueNodeId") ?? "");
-  const field = String(data.get("conditionValueField") || "value") as "value" | "current" | "min" | "max";
-  const parsed = parseTemplateSelectValue(value);
-  if (parsed.kind === "slot") return { kind: "templateSlot", slotId: parsed.id, field };
-  return { kind: "node", nodeId: parsed.id, field };
-}
-function readSource(kind: string, data: FormData, current: EffectSource): EffectSource { if (kind === "current") return current; if (kind === "number") return { kind: "number", value: Number(data.get("sourceValue")) }; if (kind === "node") return readNodeOrSlotSource(String(data.get("sourceNodeId"))); return { kind: "formula", expression: readFormulaExpression(data) }; }
 function readStaticPatch(field: PatchFieldDefinition, data: FormData) {
   if (field.field === "icon") return { icon: String(data.get("icon") ?? "") || undefined };
   if (field.kind === "number") return { [field.field]: Number(data.get("patchNumberValue")) };
@@ -453,7 +558,42 @@ function readCreatedData(type: NodeType, data: FormData, current: Record<string,
 }
 function nullableNumber(value: FormDataEntryValue | null) { const raw = String(value ?? ""); return raw === "" ? null : Number(raw); }
 function operationLabel(operation: Operation, t: ReturnType<typeof useI18n>["t"]) { return ({ ADD: t("effect.add"), SUBTRACT: t("effect.subtract"), MULTIPLY: t("effect.multiply"), PERCENT_BONUS: t("effect.percentBonus"), SET_BAR_MAX: t("effect.setNumericField"), CREATE_NODE: t("effect.createNode"), CREATE_GROUP: t("effect.createGroup"), PATCH_NODE_PROPS: t("effect.patchNode"), TRIGGERED: t("effect.triggered") } as Record<Operation, string>)[operation]; }
-
+function triggerSummary(kind: TriggerKind, nodeId: string, condition: EffectCondition, nodes: CharacterNodeModel[], slots: TemplateSlotModel[], t: ReturnType<typeof useI18n>["t"]) {
+  const conditionText = conditionExpressionSummary(condition, nodes, slots, t);
+  if (kind === "nodeClick") {
+    const node = nodeSummary(nodes, nodeId, slots);
+    return node ? `${t("effect.triggerNodeClick")}: ${node}; ${conditionText}` : t("effect.triggerNodeClick");
+  }
+  return conditionText;
+}
+function triggeredActionsSummary(actions: TriggeredEffectAction[], rowCount: number, nodes: CharacterNodeModel[], slots: TemplateSlotModel[], t: ReturnType<typeof useI18n>["t"], rootLabel: string) {
+  if (!actions.length) return t("effect.actionsCount", { count: rowCount });
+  const [first] = actions;
+  const suffix = actions.length > 1 ? ` +${actions.length - 1}` : "";
+  return `${triggeredActionSummary(first, nodes, slots, t, rootLabel)}${suffix}`;
+}
+function definitionSummary(effect: EffectDefinition, operation: Operation, selectedTargetId: string, nodes: CharacterNodeModel[], slots: TemplateSlotModel[], rootLabel: string, t: ReturnType<typeof useI18n>["t"]) {
+  const target = selectedTargetId ? nodeSummary(nodes, selectedTargetId, slots, rootLabel) : targetSummary(effect, nodes, slots, rootLabel);
+  return `${operationLabel(operation, t)}: ${target}`;
+}
+function payloadSectionTitle(isNumeric: boolean, isPatch: boolean, t: ReturnType<typeof useI18n>["t"]) {
+  if (isNumeric) return t("effect.source");
+  if (isPatch) return t("effect.patchNode");
+  return t("effect.createdNodeName");
+}
+function payloadSummary(effect: EffectDefinition, isNumeric: boolean, isPatch: boolean, sourceKind: string, selectedPatchField: PatchFieldDefinition | null, operation: Operation, nodes: CharacterNodeModel[], slots: TemplateSlotModel[], rootLabel: string, t: ReturnType<typeof useI18n>["t"]) {
+  if (isNumeric) {
+    if (sourceKind === initialSourceKind(effect.source)) {
+      return numericEffectSummary(operation, targetSummary(effect, nodes, slots, rootLabel), effect.payload?.numericField ?? "value", sourceSummary(effect.source, nodes, slots, t), t);
+    }
+    if (sourceKind === "node") return t("effect.sourceNode");
+    if (sourceKind === "formula") return t("effect.sourceFormula");
+    if (sourceKind === "current") return t("effect.currentComplexSource");
+    return t("effect.sourceNumber");
+  }
+  if (isPatch) return selectedPatchField ? t(selectedPatchField.labelKey) : t("effect.selectPatchTargetFirst");
+  return operationLabel(operation, t);
+}
 const commonNumericFields: PatchFieldDefinition[] = [
   { field: "value", labelKey: "common.value", kind: "number", derived: false },
   { field: "min", labelKey: "node.minimum", kind: "number", derived: false },
@@ -472,10 +612,4 @@ function parseTemplateSelectValue(value: string) {
   return value.startsWith("slot:")
     ? { kind: "slot" as const, id: value.slice("slot:".length) }
     : { kind: "node" as const, id: value };
-}
-
-function readNodeOrSlotSource(value: string): EffectSource {
-  const parsed = parseTemplateSelectValue(value);
-  if (parsed.kind === "slot") return { kind: "templateSlot", slotId: parsed.id, field: "value" };
-  return { kind: "node", nodeId: parsed.id, field: "value" };
 }
