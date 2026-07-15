@@ -10,38 +10,58 @@ import { useI18n } from "@/i18n/client";
 
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 
-export function EffectConditionBuilder({ nodes, slots = [], prefix = "condition" }: { nodes: CharacterNodeModel[]; slots?: TemplateSlotModel[]; prefix?: string }) {
+export function EffectConditionBuilder({
+  nodes,
+  slots = [],
+  prefix = "condition",
+  condition,
+  allowCurrent = false,
+}: {
+  nodes: CharacterNodeModel[];
+  slots?: TemplateSlotModel[];
+  prefix?: string;
+  condition?: EffectCondition;
+  allowCurrent?: boolean;
+}) {
   const { t } = useI18n();
-  const [join, setJoin] = useState("single");
-  const [firstKind, setFirstKind] = useState("always");
-  const [secondKind, setSecondKind] = useState("exists");
+  const [join, setJoin] = useState(initialJoin(condition, allowCurrent));
+  const [firstKind, setFirstKind] = useState(conditionKind(firstCondition(condition)));
+  const [secondKind, setSecondKind] = useState(conditionKind(secondCondition(condition)) || "exists");
   const slotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
+  const first = firstCondition(condition);
+  const second = secondCondition(condition);
 
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <select name={`${prefix}Join`} value={join} onChange={(event) => setJoin(event.target.value)} className={selectClass}>
+          {allowCurrent && <option value="current">{t("effect.currentComplexCondition")}</option>}
           <option value="single">{t("effect.singleCondition")}</option>
           <option value="and">{t("effect.conditionAnd")}</option>
           <option value="or">{t("effect.conditionOr")}</option>
           <option value="not">{t("effect.conditionNot")}</option>
         </select>
-        <ConditionKind name={`${prefix}FirstKind`} value={firstKind} onChange={setFirstKind} />
+        {join !== "current" && <ConditionKind name={`${prefix}FirstKind`} value={firstKind} onChange={setFirstKind} />}
       </div>
-      <ConditionFields kind={firstKind} prefix={`${prefix}First`} nodes={nodes} slotOptions={slotOptions} />
+      {join === "current" ? (
+        <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">{t("effect.currentComplexCondition")}</p>
+      ) : (
+        <ConditionFields kind={firstKind} prefix={`${prefix}First`} nodes={nodes} slotOptions={slotOptions} condition={first} />
+      )}
       {(join === "and" || join === "or") && (
         <div className="space-y-2 rounded-md border border-dashed p-2">
           <p className="text-xs text-muted-foreground">{t("effect.conditionAdditional")}</p>
           <ConditionKind name={`${prefix}SecondKind`} value={secondKind} onChange={setSecondKind} />
-          <ConditionFields kind={secondKind} prefix={`${prefix}Second`} nodes={nodes} slotOptions={slotOptions} />
+          <ConditionFields kind={secondKind} prefix={`${prefix}Second`} nodes={nodes} slotOptions={slotOptions} condition={second} />
         </div>
       )}
     </div>
   );
 }
 
-export function readEffectCondition(data: FormData, prefix = "condition"): EffectCondition {
+export function readEffectCondition(data: FormData, prefix = "condition", current?: EffectCondition): EffectCondition {
   const join = String(data.get(`${prefix}Join`) ?? "single");
+  if (join === "current" && current) return current;
   const first = readConditionLeaf(data, `${prefix}First`);
   if (join === "not") return { kind: "not", condition: first };
   if (join === "and" || join === "or") {
@@ -68,18 +88,20 @@ function ConditionFields({
   prefix,
   nodes,
   slotOptions,
+  condition,
 }: {
   kind: string;
   prefix: string;
   nodes: CharacterNodeModel[];
   slotOptions: Array<{ value: string; label: string }>;
+  condition?: EffectCondition;
 }) {
   const { t } = useI18n();
-  const [valueKind, setValueKind] = useState<"number" | "node">("number");
+  const [valueKind, setValueKind] = useState<"number" | "node">(conditionValueKind(condition));
   if (kind === "always") return null;
   return (
     <div className="space-y-2">
-      <NodePicker name={`${prefix}NodeId`} nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} />
+      <NodePicker name={`${prefix}NodeId`} nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required defaultValue={conditionNodeValue(condition)} placeholder={t("effect.selectNode")} compact />
       {kind !== "exists" && (
         <div className="space-y-2 rounded-md border bg-muted/20 p-2">
           <select name={`${prefix}ValueKind`} value={valueKind} onChange={(event) => setValueKind(event.target.value as "number" | "node")} className={selectClass}>
@@ -87,11 +109,11 @@ function ConditionFields({
             <option value="node">{t("effect.sourceNode")}</option>
           </select>
           {valueKind === "number" ? (
-            <Input name={`${prefix}Value`} type="number" step="any" required placeholder={t("common.value")} />
+            <Input name={`${prefix}Value`} type="number" step="any" required defaultValue={conditionNumberValue(condition)} placeholder={t("common.value")} />
           ) : (
             <div className="space-y-2">
-              <NodePicker name={`${prefix}ValueNodeId`} nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectNode")} />
-              <select name={`${prefix}ValueField`} defaultValue="value" className={selectClass}>
+              <NodePicker name={`${prefix}ValueNodeId`} nodes={nodes} extraOptions={slotOptions} allowedTypes={["NUMBER", "BAR"]} required defaultValue={conditionSourceNodeValue(condition)} placeholder={t("effect.selectNode")} compact />
+              <select name={`${prefix}ValueField`} defaultValue={conditionSourceField(condition)} className={selectClass}>
                 {numericFields.map((field) => <option key={field} value={field}>{fieldLabel(field, t)}</option>)}
               </select>
             </div>
@@ -125,6 +147,78 @@ function readConditionLeaf(data: FormData, prefix: string): EffectCondition {
 }
 
 const numericFields = ["value", "min", "max"] as const;
+
+function initialJoin(condition: EffectCondition | undefined, allowCurrent: boolean) {
+  if (!condition) return "single";
+  if (!isEditableCondition(condition) && allowCurrent) return "current";
+  if (condition.kind === "and" || condition.kind === "or" || condition.kind === "not") return condition.kind;
+  return "single";
+}
+
+function firstCondition(condition: EffectCondition | undefined): EffectCondition | undefined {
+  if (!condition) return undefined;
+  if (condition.kind === "and" || condition.kind === "or") return condition.conditions[0];
+  if (condition.kind === "not") return condition.condition;
+  return condition;
+}
+
+function secondCondition(condition: EffectCondition | undefined): EffectCondition | undefined {
+  if (condition?.kind === "and" || condition?.kind === "or") return condition.conditions[1];
+  return undefined;
+}
+
+function conditionKind(condition: EffectCondition | undefined) {
+  if (!condition) return "always";
+  if (condition.kind === "always") return "always";
+  if (condition.kind === "fieldExists" || condition.kind === "slotExists") return "exists";
+  if (condition.kind === "compare" || condition.kind === "compareSlot") return condition.operator;
+  return "always";
+}
+
+function conditionNodeValue(condition: EffectCondition | undefined) {
+  if (condition?.kind === "slotExists") return `slot:${condition.slotId}`;
+  if (condition?.kind === "fieldExists") return condition.nodeId;
+  if (condition?.kind === "compareSlot") return `slot:${condition.slotId}`;
+  if (condition?.kind === "compare") return condition.nodeId;
+  return "";
+}
+
+function conditionValueKind(condition: EffectCondition | undefined): "number" | "node" {
+  const source = compareSource(condition);
+  if (!source) return "number";
+  return source.kind === "number" ? "number" : "node";
+}
+
+function conditionNumberValue(condition: EffectCondition | undefined) {
+  const source = compareSource(condition);
+  return source?.kind === "number" ? source.value : undefined;
+}
+
+function conditionSourceNodeValue(condition: EffectCondition | undefined) {
+  const source = compareSource(condition);
+  if (source?.kind === "templateSlot") return `slot:${source.slotId}`;
+  if (source?.kind === "node") return source.nodeId;
+  return "";
+}
+
+function conditionSourceField(condition: EffectCondition | undefined) {
+  const source = compareSource(condition);
+  if (source?.kind === "templateSlot" || source?.kind === "node") return source.field ?? "value";
+  return "value";
+}
+
+function compareSource(condition: EffectCondition | undefined) {
+  if (condition?.kind === "compare" || condition?.kind === "compareSlot") return condition.value;
+  return null;
+}
+
+function isEditableCondition(condition: EffectCondition): boolean {
+  if (condition.kind === "always" || condition.kind === "fieldExists" || condition.kind === "slotExists") return true;
+  if (condition.kind === "compare" || condition.kind === "compareSlot") return condition.value.kind === "number" || condition.value.kind === "node" || condition.value.kind === "templateSlot";
+  if (condition.kind === "not") return isEditableCondition(condition.condition);
+  if (condition.kind === "and" || condition.kind === "or") return condition.conditions.length <= 2 && condition.conditions.every(isEditableCondition);
+  return false;
+}
 
 function readCompareSource(data: FormData, prefix: string): EffectSource {
   const kind = String(data.get(`${prefix}ValueKind`) || "number");

@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useId, useMemo, useState } from "react";
-import { Crosshair, Search, X } from "lucide-react";
+import { ChevronsUpDown, Crosshair, Search, X } from "lucide-react";
 import type { CharacterNodeModel, NodeType } from "@/domain/nodes";
 import { useCharacterUiStore } from "@/store/character-ui-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n/client";
 
@@ -30,6 +29,7 @@ export function NodePicker({
   placeholder,
   required = false,
   disabled = false,
+  compact = false,
 }: {
   name: string;
   nodes: CharacterNodeModel[];
@@ -44,12 +44,14 @@ export function NodePicker({
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   const { t } = useI18n();
   const reactId = useId();
   const pickerId = `${name}-${reactId}`;
   const [internalValue, setInternalValue] = useState(defaultValue);
   const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState(!compact);
   const currentValue = value ?? internalValue;
   const nodePickRequest = useCharacterUiStore((state) => state.nodePickRequest);
   const pickedNode = useCharacterUiStore((state) => state.pickedNode);
@@ -103,6 +105,10 @@ export function NodePicker({
   function setValue(nextValue: string) {
     if (value === undefined) setInternalValue(nextValue);
     onChange?.(nextValue);
+    if (compact) {
+      setExpanded(false);
+      setQuery("");
+    }
   }
 
   return (
@@ -110,15 +116,60 @@ export function NodePicker({
       <input type="hidden" name={name} value={currentValue} required={required} />
       <div className="flex gap-2">
         <div className="relative min-w-0 flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={placeholder ?? t("node.pickerSearch")}
-            className="pl-9"
-            disabled={disabled}
-          />
+          {currentValue && selectedLabel ? (
+            <div className="group flex h-9 w-full min-w-0 items-center rounded-md border bg-muted/40 px-3 text-sm">
+              <button
+                type="button"
+                className="min-w-0 flex-1 truncate text-left"
+                disabled={disabled}
+                title={selectedLabel}
+                onClick={() => {
+                  if (compact) setExpanded(true);
+                }}
+              >
+                {selectedLabel}
+              </button>
+              <button
+                type="button"
+                className="hidden shrink-0 rounded text-muted-foreground hover:text-foreground group-hover:block"
+                disabled={disabled}
+                aria-label={t("common.clear")}
+                title={t("common.clear")}
+                onClick={() => setValue("")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  if (compact) setExpanded(true);
+                }}
+                placeholder={placeholder ?? t("node.pickerSearch")}
+                className="pl-9"
+                disabled={disabled}
+              />
+            </>
+          )}
         </div>
+        {compact && (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            disabled={disabled}
+            className="shrink-0"
+            title={expanded ? t("common.collapse") : t("common.expand")}
+            aria-label={expanded ? t("common.collapse") : t("common.expand")}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            <ChevronsUpDown className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           type="button"
           variant={activePick ? "secondary" : "outline"}
@@ -131,11 +182,13 @@ export function NodePicker({
           {activePick ? <X className="h-4 w-4" /> : <Crosshair className="h-4 w-4" />}
         </Button>
       </div>
-      <div className="flex min-h-6 flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span>{t("node.selectedNode")}:</span>
-        {selectedLabel ? <Badge>{selectedLabel}</Badge> : <span>{placeholder ?? t("effect.selectNode")}</span>}
-      </div>
-      <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border bg-background p-1">
+      {!selectedLabel && (
+        <div className="flex min-h-6 flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>{t("node.selectedNode")}:</span>
+          <span>{placeholder ?? t("effect.selectNode")}</span>
+        </div>
+      )}
+      <div className={cn("max-h-44 space-y-1 overflow-y-auto rounded-md border bg-background p-1", !expanded && "hidden")}>
         {includeRoot && rootMatches(query, rootLabel ?? t("common.rootCharacter")) && (
           <PickerOption
             label={rootLabel ?? t("common.rootCharacter")}

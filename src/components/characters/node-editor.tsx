@@ -162,6 +162,20 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
     <form action={submit} className="space-y-4">
       <FormField label={t("common.name")} name="name" required defaultValue={active?.name} />
       <div className="space-y-2">
+        <label className="text-sm font-medium" htmlFor="node-type">{t("common.type")}</label>
+        {active && <input type="hidden" name="type" value={type} />}
+        <select id="node-type" name={active ? undefined : "type"} disabled={Boolean(active)} value={type} onChange={(event) => setType(event.target.value as NodeType)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+          {nodeTypes.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+      </div>
+      <DataFields
+        key={`data-${type}-${active?.id ?? "new"}`}
+        type={type}
+        data={active?.type === type ? active.data : undefined}
+        nodes={nodes.filter((node) => node.id !== active?.id)}
+        linkableCharacters={linkableCharacters}
+      />
+      <div className="space-y-2">
         <div className="text-sm font-medium">{t("node.parent")}</div>
         <NodePicker
           name="parentId"
@@ -171,13 +185,6 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
           rootLabel={rootLabel}
           placeholder={t("node.parent")}
         />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium" htmlFor="node-type">{t("common.type")}</label>
-        {active && <input type="hidden" name="type" value={type} />}
-        <select id="node-type" name={active ? undefined : "type"} disabled={Boolean(active)} value={type} onChange={(event) => setType(event.target.value as NodeType)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
-          {nodeTypes.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
       </div>
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="description">{t("common.description")}</label>
@@ -195,13 +202,6 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
       </div>
       <NodeIconPicker key={`icon-${type}-${active?.id ?? "new"}`} type={type} defaultValue={active?.data.icon} />
       <NodeAccentColorPicker key={`accent-${active?.id ?? "new"}`} defaultValue={active?.data.accentColor} />
-      <DataFields
-        key={`data-${type}-${active?.id ?? "new"}`}
-        type={type}
-        data={active?.type === type ? active.data : undefined}
-        nodes={nodes.filter((node) => node.id !== active?.id)}
-        linkableCharacters={linkableCharacters}
-      />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex w-full flex-wrap gap-2">
         <Button type="submit" disabled={pending}><Save className="h-4 w-4" />{pending ? t("common.saving") : t("common.save")}</Button>
