@@ -21,7 +21,7 @@ type ManualTrigger = {
   name: string;
 };
 
-export function CharacterTree({ nodes, editorSectionId = "node-editor", searchable = false, manualTriggers = [] }: { nodes: NodeTreeItem[]; editorSectionId?: string; searchable?: boolean; manualTriggers?: ManualTrigger[] }) {
+export function CharacterTree({ characterId, nodes, editorSectionId = "node-editor", searchable = false, manualTriggers = [] }: { characterId?: string; nodes: NodeTreeItem[]; editorSectionId?: string; searchable?: boolean; manualTriggers?: ManualTrigger[] }) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const nodePickRequest = useCharacterUiStore((state) => state.nodePickRequest);
@@ -64,7 +64,7 @@ export function CharacterTree({ nodes, editorSectionId = "node-editor", searchab
       ) : (
         <div className="space-y-1">
           {visibleNodes.map((node) => (
-            <TreeRow key={node.id} node={node} depth={0} editorSectionId={editorSectionId} forceExpanded={Boolean(normalizedQuery)} manualTriggers={manualTriggers} />
+            <TreeRow key={node.id} characterId={characterId} node={node} depth={0} editorSectionId={editorSectionId} forceExpanded={Boolean(normalizedQuery)} manualTriggers={manualTriggers} />
           ))}
         </div>
       )}
@@ -72,10 +72,10 @@ export function CharacterTree({ nodes, editorSectionId = "node-editor", searchab
   );
 }
 
-function TreeRow({ node, depth, editorSectionId, forceExpanded, manualTriggers }: { node: NodeTreeItem; depth: number; editorSectionId: string; forceExpanded: boolean; manualTriggers: ManualTrigger[] }) {
+function TreeRow({ characterId, node, depth, editorSectionId, forceExpanded, manualTriggers }: { characterId?: string; node: NodeTreeItem; depth: number; editorSectionId: string; forceExpanded: boolean; manualTriggers: ManualTrigger[] }) {
   const { t } = useI18n();
   const router = useRouter();
-  const { collapsedNodeIds, expandedNodeIds, selectedNodeId, nodePickRequest, toggleNode, completeNodePick, selectNode, setEditorMode, openSidebarSection } = useCharacterUiStore();
+  const { collapsedNodeIds, expandedNodeIds, selectedNodeId, nodePickRequest, toggleNode, completeNodePick, selectNode, setEditorMode, openSidebarSection, trackImpact } = useCharacterUiStore();
   const collapsedByDefault = Boolean(node.data.collapsedByDefault);
   const collapsed = !forceExpanded && (collapsedByDefault ? !expandedNodeIds.has(node.id) : collapsedNodeIds.has(node.id));
   const selected = selectedNodeId === node.id;
@@ -92,11 +92,13 @@ function TreeRow({ node, depth, editorSectionId, forceExpanded, manualTriggers }
   async function runTrigger(trigger: ManualTrigger) {
     setRunningEffectId(trigger.effectId);
     setRunError(null);
-    const response = await fetch(`/api/effects/${trigger.effectId}/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nodeId: node.id }),
-    });
+    const response = await trackImpact(characterId, t("impact.triggerRun"), () =>
+      fetch(`/api/effects/${trigger.effectId}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodeId: node.id }),
+      })
+    );
     setRunningEffectId(null);
     if (!response.ok) {
       setRunError(await localizedApiError(response, t, "effect.runFailed"));
@@ -221,7 +223,7 @@ function TreeRow({ node, depth, editorSectionId, forceExpanded, manualTriggers }
         </div>
       )}
       {!collapsed &&
-        node.children.map((child) => <TreeRow key={child.id} node={child} depth={depth + 1} editorSectionId={editorSectionId} forceExpanded={forceExpanded} manualTriggers={manualTriggers} />)}
+        node.children.map((child) => <TreeRow key={child.id} characterId={characterId} node={child} depth={depth + 1} editorSectionId={editorSectionId} forceExpanded={forceExpanded} manualTriggers={manualTriggers} />)}
     </div>
   );
 }

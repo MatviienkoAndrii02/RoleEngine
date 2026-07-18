@@ -6,6 +6,7 @@ import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
+import { useCharacterUiStore } from "@/store/character-ui-store";
 
 export type ArchivedNodeItem = {
   id: string;
@@ -18,6 +19,7 @@ export type ArchivedNodeItem = {
 export function NodeArchive({ characterId, items }: { characterId: string; items: ArchivedNodeItem[] }) {
   const router = useRouter();
   const { t } = useI18n();
+  const trackImpact = useCharacterUiStore((state) => state.trackImpact);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +27,7 @@ export function NodeArchive({ characterId, items }: { characterId: string; items
     if (!window.confirm(t("nodeArchive.restoreConfirm", { name: item.name }))) return;
     setPendingId(item.id);
     setError(null);
-    const response = await fetch(`/api/characters/${characterId}/nodes/${item.id}/restore`, { method: "POST" });
+    const response = await trackImpact(characterId, t("impact.nodeRestored"), () => fetch(`/api/characters/${characterId}/nodes/${item.id}/restore`, { method: "POST" }));
     setPendingId(null);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "common.restoreFailed"));

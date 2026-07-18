@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { NodePicker } from "@/components/characters/node-picker";
 import { useI18n } from "@/i18n/client";
 import { TemplateFilterSelect, type TemplatePickerOption } from "@/components/templates/template-filter-select";
+import { useCharacterUiStore } from "@/store/character-ui-store";
 
 export function ApplyTemplate({
   characterId,
@@ -23,6 +24,7 @@ export function ApplyTemplate({
 }) {
   const router = useRouter();
   const { t } = useI18n();
+  const trackImpact = useCharacterUiStore((state) => state.trackImpact);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [parentNodeId, setParentNodeId] = useState("");
@@ -38,15 +40,17 @@ export function ApplyTemplate({
   async function submit(formData: FormData) {
     setPending(true);
     setMessage(null);
-    const response = await fetch(`/api/characters/${characterId}/templates`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        templateId,
-        parentNodeId: parentNodeId || null,
-        bindings: readBindings(formData, selectedTemplate?.slots ?? []),
-      }),
-    });
+    const response = await trackImpact(characterId, t("impact.templateApplied"), () =>
+      fetch(`/api/characters/${characterId}/templates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateId,
+          parentNodeId: parentNodeId || null,
+          bindings: readBindings(formData, selectedTemplate?.slots ?? []),
+        }),
+      })
+    );
     setPending(false);
     if (!response.ok) {
       setMessage(t("template.applyFailed"));

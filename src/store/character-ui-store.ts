@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { NodeType } from "@/domain/nodes";
+import { compareImpactSnapshots, hasImpact, type CharacterImpactReport, type CharacterImpactSnapshot } from "@/domain/character-impact";
 
 type NodePickRequest = {
   pickerId: string;
@@ -22,6 +23,8 @@ type CharacterUiState = {
   sidebarScrollRequest: { sectionId: string; nonce: number } | null;
   nodePickRequest: NodePickRequest | null;
   pickedNode: PickedNode | null;
+  impactReport: CharacterImpactReport | null;
+  impactError: string | null;
   toggleNode: (nodeId: string, collapsedByDefault?: boolean) => void;
   revealNode: (nodeId: string, ancestorIds?: string[]) => void;
   selectNode: (nodeId: string | null) => void;
@@ -32,6 +35,8 @@ type CharacterUiState = {
   cancelNodePick: () => void;
   completeNodePick: (nodeId: string) => void;
   clearPickedNode: (pickerId: string) => void;
+  trackImpact: <T>(characterId: string | undefined, label: string, action: () => Promise<T>) => Promise<T>;
+  clearImpactReport: () => void;
 };
 
 export const useCharacterUiStore = create<CharacterUiState>((set) => ({
@@ -43,6 +48,8 @@ export const useCharacterUiStore = create<CharacterUiState>((set) => ({
   sidebarScrollRequest: null,
   nodePickRequest: null,
   pickedNode: null,
+  impactReport: null,
+  impactError: null,
   toggleNode: (nodeId, collapsedByDefault = false) =>
     set((state) => {
       if (collapsedByDefault) {
@@ -95,4 +102,37 @@ export const useCharacterUiStore = create<CharacterUiState>((set) => ({
         }
       : {}),
   clearPickedNode: (pickerId) => set((state) => state.pickedNode?.pickerId === pickerId ? { pickedNode: null } : {}),
+  trackImpact: async (characterId, label, action) => {
+    if (!characterId) return action();
+    let before: CharacterImpactSnapshot | null = null;
+    try {
+      before = await fetchImpactSnapshot(characterId);
+    } catch {
+      set({ impactError: "before" });
+    }
+
+    const result = await action();
+
+    if (isFailedResponse(result)) return result;
+    if (!before) return result;
+    try {
+      const after = await fetchImpactSnapshot(characterId);
+      const report = compareImpactSnapshots(label, before, after);
+      set({ impactReport: hasImpact(report) ? report : { ...report, valueChanges: [], addedNodes: [], removedNodes: [] }, impactError: null });
+    } catch {
+      set({ impactError: "after" });
+    }
+    return result;
+  },
+  clearImpactReport: () => set({ impactReport: null, impactError: null }),
 }));
+
+async function fetchImpactSnapshot(characterId: string): Promise<CharacterImpactSnapshot> {
+  const response = await fetch(`/api/characters/${characterId}/impact`, { cache: "no-store" });
+  if (!response.ok) throw new Error("Could not load character impact snapshot");
+  return response.json() as Promise<CharacterImpactSnapshot>;
+}
+
+function isFailedResponse(value: unknown) {
+  return typeof Response !== "undefined" && value instanceof Response && !value.ok;
+}

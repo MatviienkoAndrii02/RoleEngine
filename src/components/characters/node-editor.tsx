@@ -41,6 +41,7 @@ export function NodeEditor({
   const router = useRouter();
   const { t } = useI18n();
   const selectedNodeId = useCharacterUiStore((state) => state.selectedNodeId);
+  const trackImpact = useCharacterUiStore((state) => state.trackImpact);
   const selectNode = useCharacterUiStore((state) => state.selectNode);
   const mode = useCharacterUiStore((state) => state.editorMode);
   const setEditorMode = useCharacterUiStore((state) => state.setEditorMode);
@@ -69,13 +70,15 @@ export function NodeEditor({
       data: readNodeData(type, formData),
       ...(editing ? { parentId: formData.get("parentId") || null } : {}),
     };
-    const response = await fetch(
-      editing ? `${apiBase}/${selected.id}` : apiBase,
-      {
-        method: editing ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editing ? payload : { ...payload, type, parentId: formData.get("parentId") || null })
-      }
+    const response = await trackImpact(characterId, editing ? t("impact.nodeUpdated") : t("impact.nodeCreated"), () =>
+      fetch(
+        editing ? `${apiBase}/${selected.id}` : apiBase,
+        {
+          method: editing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(editing ? payload : { ...payload, type, parentId: formData.get("parentId") || null })
+        }
+      )
     );
     setPending(false);
     if (!response.ok) {
@@ -89,7 +92,7 @@ export function NodeEditor({
   async function remove() {
     if (!selected || !window.confirm(t("node.deleteConfirm", { name: selected.name }))) return;
     setPending(true);
-    const response = await fetch(`${apiBase}/${selected.id}`, { method: "DELETE" });
+    const response = await trackImpact(characterId, t("impact.nodeDeleted"), () => fetch(`${apiBase}/${selected.id}`, { method: "DELETE" }));
     setPending(false);
     if (!response.ok) {
       setError(t("node.deleteFailed"));

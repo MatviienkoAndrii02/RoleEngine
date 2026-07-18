@@ -20,6 +20,7 @@ import {
 } from "@/components/characters/triggered-action-editor";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
+import { useCharacterUiStore } from "@/store/character-ui-store";
 
 type TriggeredEffectBuilderProps =
   | { characterId: string; templateId?: never; nodes: CharacterNodeModel[]; slots?: never }
@@ -32,6 +33,7 @@ const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots = [] }: TriggeredEffectBuilderProps) {
   const { t } = useI18n();
   const router = useRouter();
+  const trackImpact = useCharacterUiStore((state) => state.trackImpact);
   const endpoint = characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`;
   const numericNodes = nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR");
   const containers = nodes.filter((node) => node.type === "CONTAINER" || node.type === "GROUP");
@@ -90,18 +92,20 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
     setPending(true);
     setError(null);
     const triggerCondition = readEffectCondition(data, "trigger");
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: data.get("name"),
-        operation: "TRIGGERED",
-        trigger: triggerKind === "nodeClick"
-          ? { kind: "nodeClick", nodeId: data.get("triggerNodeId"), condition: triggerCondition }
-          : { kind: "condition", condition: triggerCondition },
-        actions: rows.map((row, index) => readTriggeredAction(row, data, index, nodes, "action")),
-      }),
-    });
+    const response = await trackImpact(characterId, t("impact.effectCreated"), () =>
+      fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: data.get("name"),
+          operation: "TRIGGERED",
+          trigger: triggerKind === "nodeClick"
+            ? { kind: "nodeClick", nodeId: data.get("triggerNodeId"), condition: triggerCondition }
+            : { kind: "condition", condition: triggerCondition },
+          actions: rows.map((row, index) => readTriggeredAction(row, data, index, nodes, "action")),
+        }),
+      })
+    );
     setPending(false);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "effect.saveFailed"));

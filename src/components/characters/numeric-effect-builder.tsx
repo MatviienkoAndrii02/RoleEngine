@@ -15,6 +15,7 @@ import { conditionExpressionSummary, fieldLabel, nodeSummary, numericEffectSumma
 import { NodePicker } from "@/components/characters/node-picker";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
+import { useCharacterUiStore } from "@/store/character-ui-store";
 
 type NumericEffectBuilderProps =
   | { characterId: string; templateId?: never; nodes: CharacterNodeModel[]; slots?: never }
@@ -25,6 +26,7 @@ type NumericOperation = "ADD" | "SUBTRACT" | "MULTIPLY" | "PERCENT_BONUS" | "SET
 export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [] }: NumericEffectBuilderProps) {
   const { t } = useI18n();
   const router = useRouter();
+  const trackImpact = useCharacterUiStore((state) => state.trackImpact);
   const endpoint = characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`;
   const numeric = nodes.filter((n) => n.type === "NUMBER" || n.type === "BAR");
   const numericSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"));
@@ -80,7 +82,9 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
     setPending(true); setError(null);
     const source = readEditableEffectSource(data, sourceKind);
     const finalCondition = readEffectCondition(data);
-    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: data.get("name"), operation: data.get("operation"), targetNodeId: data.get("targetNodeId"), numericField: data.get("numericField"), source, condition: finalCondition }) });
+    const response = await trackImpact(characterId, t("impact.effectCreated"), () =>
+      fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: data.get("name"), operation: data.get("operation"), targetNodeId: data.get("targetNodeId"), numericField: data.get("numericField"), source, condition: finalCondition }) })
+    );
     setPending(false);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "effect.saveFailed"));

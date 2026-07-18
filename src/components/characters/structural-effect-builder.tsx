@@ -19,6 +19,7 @@ import { NodeIconPicker } from "@/components/characters/node-icons";
 import { NodePicker } from "@/components/characters/node-picker";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
+import { useCharacterUiStore } from "@/store/character-ui-store";
 
 type StructuralEffectBuilderProps =
   | { characterId: string; templateId?: never; nodes: CharacterNodeModel[]; slots?: never }
@@ -30,6 +31,7 @@ const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 export function StructuralEffectBuilder({ characterId, templateId, nodes, slots = [] }: StructuralEffectBuilderProps) {
   const { t } = useI18n();
   const router = useRouter();
+  const trackImpact = useCharacterUiStore((state) => state.trackImpact);
   const [operation, setOperation] = useState<"CREATE_NODE" | "CREATE_GROUP" | "PATCH_NODE_PROPS">("CREATE_NODE");
   const [nodeType, setNodeType] = useState<NodeType>("NUMBER");
   const [targetNodeId, setTargetNodeId] = useState("");
@@ -142,11 +144,13 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
           },
         };
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const response = await trackImpact(characterId, t("impact.effectCreated"), () =>
+      fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    );
     setPending(false);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "effect.saveFailed"));

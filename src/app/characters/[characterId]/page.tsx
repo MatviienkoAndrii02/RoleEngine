@@ -15,6 +15,7 @@ import { EffectManager } from "@/components/characters/effect-manager";
 import { CharacterSettings } from "@/components/characters/character-settings";
 import { SidebarSection } from "@/components/characters/sidebar-section";
 import { DependencyPanel } from "@/components/characters/dependency-panel";
+import { ImpactPanel } from "@/components/characters/impact-panel";
 import { ProblemsPanel, type ProblemItem } from "@/components/characters/problems-panel";
 import { NodeArchive, type ArchivedNodeItem } from "@/components/characters/node-archive";
 import { AuditList } from "@/components/history/audit-list";
@@ -197,7 +198,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
       }
       nodeEditor={canEdit ? <NodeEditor characterId={characterId} nodes={nodes} templates={templateOptions} linkableCharacters={linkableCharacters} /> : null}
       effectComposer={canEdit ? <EffectComposer characterId={characterId} nodes={nodes} /> : null}
-      effectManager={canEdit ? <EffectManager nodes={nodes} archivedNodes={parsedArchivedNodes.nodes} effects={effects} /> : null}
+      effectManager={canEdit ? <EffectManager characterId={characterId} nodes={nodes} archivedNodes={parsedArchivedNodes.nodes} effects={effects} /> : null}
       nodeArchive={canEdit ? <NodeArchive characterId={characterId} items={archivedItems} /> : null}
       counts={{
         effects: effects.length,
@@ -236,6 +237,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
       </div>
 
       <ProblemsPanel problems={problems} />
+      {canEdit && <ImpactPanel />}
 
       {canEdit ? <CharacterViewMode gmView={gmView} playerView={playerView} /> : playerView}
     </div>
@@ -295,7 +297,7 @@ function CharacterMainGrid({
           <CardTitle>{t("character.nodeTree")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <CharacterTree nodes={buildNodeTree(treeNodes)} searchable manualTriggers={manualTriggers} />
+          <CharacterTree characterId={canEdit ? characterId : undefined} nodes={buildNodeTree(treeNodes)} searchable manualTriggers={manualTriggers} />
         </CardContent>
       </Card>
       <div className="space-y-6">

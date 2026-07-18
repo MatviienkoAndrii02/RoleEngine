@@ -40,6 +40,7 @@ import {
 } from "@/components/characters/triggered-action-editor";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
+import { useCharacterUiStore } from "@/store/character-ui-store";
 
 type EffectItem = EffectDefinition & { createdAt?: string | Date; updatedAt?: string | Date };
 type Operation = EffectDefinition["operation"];
@@ -50,9 +51,10 @@ const structuralOperations: Operation[] = ["CREATE_NODE", "CREATE_GROUP", "PATCH
 const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
 const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
 
-export function EffectManager({ nodes, archivedNodes = [], effects, rootLabel, slots = [] }: { nodes: CharacterNodeModel[]; archivedNodes?: CharacterNodeModel[]; effects: EffectItem[]; title?: string; rootLabel?: string; slots?: TemplateSlotModel[] }) {
+export function EffectManager({ characterId, nodes, archivedNodes = [], effects, rootLabel, slots = [] }: { characterId?: string; nodes: CharacterNodeModel[]; archivedNodes?: CharacterNodeModel[]; effects: EffectItem[]; title?: string; rootLabel?: string; slots?: TemplateSlotModel[] }) {
   const { t } = useI18n();
   const router = useRouter();
+  const trackImpact = useCharacterUiStore((state) => state.trackImpact);
   const resolvedRootLabel = rootLabel ?? t("common.rootCharacter");
   const referenceLabels = useMemo(() => buildReferenceLabels(nodes, archivedNodes, t), [nodes, archivedNodes, t]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -62,11 +64,13 @@ export function EffectManager({ nodes, archivedNodes = [], effects, rootLabel, s
   async function patch(id: string, body: object) {
     setPendingId(id);
     setError(null);
-    const response = await fetch(`/api/effects/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const response = await trackImpact(characterId, t("impact.effectUpdated"), () =>
+      fetch(`/api/effects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    );
     setPendingId(null);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "effect.saveFailed"));
@@ -79,7 +83,7 @@ export function EffectManager({ nodes, archivedNodes = [], effects, rootLabel, s
   async function remove(effect: EffectItem) {
     if (!window.confirm(t("effect.deleteConfirm", { name: effect.name }))) return;
     setPendingId(effect.id);
-    const response = await fetch(`/api/effects/${effect.id}`, { method: "DELETE" });
+    const response = await trackImpact(characterId, t("impact.effectDeleted"), () => fetch(`/api/effects/${effect.id}`, { method: "DELETE" }));
     setPendingId(null);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "effect.deleteFailed"));
