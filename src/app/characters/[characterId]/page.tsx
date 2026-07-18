@@ -27,6 +27,8 @@ import { parseCharacterNodeModels, parseEffectDefinitions, type PersistedJsonDia
 import { collectSubtreeIds } from "@/domain/tree";
 import { latestDate } from "@/server/character-version";
 
+const INITIAL_AUDIT_LIMIT = 25;
+
 export default async function CharacterPage({ params }: { params: Promise<{ characterId: string }> }) {
   const { characterId } = await params;
   const user = await requirePageUser(`/characters/${characterId}`);
@@ -45,7 +47,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
         auditLogs: {
           include: { actor: { select: { name: true, email: true } } },
           orderBy: { createdAt: "desc" },
-          take: 100
+          take: INITIAL_AUDIT_LIMIT + 1
         }
       }
     })
@@ -73,6 +75,9 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
   let diagnostics = [...parsedNodes.diagnostics, ...parsedEffects.diagnostics];
   const nodes = parsedNodes.nodes;
   const effects = parsedEffects.effects;
+  const auditLogs = data.auditLogs.slice(0, INITIAL_AUDIT_LIMIT);
+  const auditNextCursor = data.auditLogs.length > INITIAL_AUDIT_LIMIT ? auditLogs.at(-1)?.id ?? null : null;
+  const auditTotal = await prisma.auditLog.count({ where: { characterId: data.id } });
   const nodeClickTriggers = effects
     .filter((effect) => effect.enabled && effect.operation === "TRIGGERED" && effect.payload?.triggered?.trigger.kind === "nodeClick")
     .map((effect) => ({
@@ -170,7 +175,10 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
       dependencyEdges={changedDependencyEdges}
       auditNodes={nodes}
       auditEffects={effects}
-      auditLogs={data.auditLogs}
+      auditLogs={auditLogs}
+      auditNextCursor={auditNextCursor}
+      auditTotal={auditTotal}
+      characterId={data.id}
       maskAuditNodeNames={false}
       canEdit={canEdit}
       settings={
@@ -207,7 +215,10 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
       dependencyEdges={playerChangedDependencyEdges}
       auditNodes={playerNodes}
       auditEffects={effects}
-      auditLogs={data.auditLogs}
+      auditLogs={auditLogs}
+      auditNextCursor={auditNextCursor}
+      auditTotal={auditTotal}
+      characterId={data.id}
       maskAuditNodeNames
       canEdit={false}
       t={t}
@@ -240,6 +251,9 @@ function CharacterMainGrid({
   auditNodes,
   auditEffects,
   auditLogs,
+  auditNextCursor,
+  auditTotal,
+  characterId,
   maskAuditNodeNames = false,
   canEdit,
   settings,
@@ -258,6 +272,9 @@ function CharacterMainGrid({
   auditNodes: CharacterNodeModel[];
   auditEffects: ReturnType<typeof parseEffectDefinitions>["effects"];
   auditLogs: Parameters<typeof AuditList>[0]["logs"];
+  auditNextCursor: string | null;
+  auditTotal: number;
+  characterId: string;
   maskAuditNodeNames?: boolean;
   canEdit: boolean;
   settings?: ReactNode;
@@ -310,8 +327,16 @@ function CharacterMainGrid({
         <SidebarSection id={canEdit ? "dependencies" : "player-preview-dependencies"} title={t("character.dependencies")} count={dependencyCalculations.length}>
           <DependencyPanel calculations={dependencyCalculations} nodes={dependencyNodes} edges={dependencyEdges} />
         </SidebarSection>
-        <SidebarSection id={canEdit ? "history" : "player-preview-history"} title={t("character.history")} count={auditLogs.length}>
-          <AuditList logs={auditLogs} nodes={auditNodes} effects={auditEffects} maskUnknownNodeNames={maskAuditNodeNames} />
+        <SidebarSection id={canEdit ? "history" : "player-preview-history"} title={t("character.history")} count={auditTotal}>
+          <AuditList
+            characterId={characterId}
+            logs={auditLogs}
+            nextCursor={auditNextCursor}
+            total={auditTotal}
+            nodes={auditNodes}
+            effects={auditEffects}
+            maskUnknownNodeNames={maskAuditNodeNames}
+          />
         </SidebarSection>
       </div>
     </div>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AuditAction, AuditLog } from "@prisma/client";
-import { ArrowRight, ExternalLink, Search } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ArrowRight, ChevronDown, ChevronRight, ExternalLink, Link2, Loader2, Search } from "lucide-react";
 import type { CharacterNodeModel } from "@/domain/nodes";
 import type { EffectDefinition } from "@/domain/effects";
 import { Badge } from "@/components/ui/badge";
@@ -11,30 +12,53 @@ import { Input } from "@/components/ui/input";
 import { useI18n } from "@/i18n/client";
 import { useCharacterUiStore } from "@/store/character-ui-store";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 25;
 
-type AuditLogWithActor = AuditLog & {
+type AuditLogWithActor = Omit<AuditLog, "createdAt"> & {
+  createdAt: Date | string;
   actor?: { name: string | null; email: string } | null;
+};
+
+type AuditListResponse = {
+  items: AuditLogWithActor[];
+  nextCursor: string | null;
+  total: number;
 };
 
 type AuditEntity = "ALL" | "Character" | "CharacterNode" | "Effect" | "CharacterAssignment" | "EntityTemplate" | "TemplateNode";
 
 export function AuditList({
+  characterId,
   logs,
+  nextCursor: initialNextCursor = null,
+  total: initialTotal = logs.length,
   nodes = [],
   effects = [],
   maskUnknownNodeNames = false,
 }: {
+  characterId: string;
   logs: AuditLogWithActor[];
+  nextCursor?: string | null;
+  total?: number;
   nodes?: CharacterNodeModel[];
   effects?: EffectDefinition[];
   maskUnknownNodeNames?: boolean;
 }) {
   const { language, t } = useI18n();
+  const searchParams = useSearchParams();
+  const focusedAuditId = searchParams.get("audit");
+  const [items, setItems] = useState(logs);
+  const [nextCursor, setNextCursor] = useState(initialNextCursor);
+  const [total, setTotal] = useState(initialTotal);
   const [actionFilter, setActionFilter] = useState<AuditAction | "ALL">("ALL");
   const [entityFilter, setEntityFilter] = useState<AuditEntity>("ALL");
   const [query, setQuery] = useState("");
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [highlightedId, setHighlightedId] = useState(focusedAuditId ?? "");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => focusedAuditId ? new Set([focusedAuditId]) : new Set());
+  const firstFilterRun = useRef(true);
   const openSidebarSection = useCharacterUiStore((state) => state.openSidebarSection);
   const selectNode = useCharacterUiStore((state) => state.selectNode);
   const setEditorMode = useCharacterUiStore((state) => state.setEditorMode);
@@ -42,22 +66,73 @@ export function AuditList({
   const knownNodes = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const knownEffects = useMemo(() => new Map(effects.map((effect) => [effect.id, effect])), [effects]);
   const entityOptions = useMemo(() => {
-    const values = new Set<AuditEntity>();
-    for (const log of logs) values.add(log.entityType as AuditEntity);
+    const values = new Set<AuditEntity>(["Character", "CharacterNode", "Effect", "CharacterAssignment", "EntityTemplate", "TemplateNode"]);
+    for (const log of items) values.add(log.entityType as AuditEntity);
     return ["ALL", ...Array.from(values).sort()] as AuditEntity[];
-  }, [logs]);
+  }, [items]);
 
-  const formatted = useMemo(() => logs.map((log) => formatLog(log, knownNodes, knownEffects, t, { maskUnknownNodeNames })), [logs, knownNodes, knownEffects, t, maskUnknownNodeNames]);
-  const normalizedQuery = query.trim().toLowerCase();
-  const filtered = formatted.filter((item) => {
-    if (actionFilter !== "ALL" && item.log.action !== actionFilter) return false;
-    if (entityFilter !== "ALL" && item.log.entityType !== entityFilter) return false;
-    if (!normalizedQuery) return true;
-    return item.searchText.toLowerCase().includes(normalizedQuery);
-  });
-  const visible = filtered.slice(0, visibleCount);
+  const formatted = useMemo(() => items.map((log) => formatLog(log, knownNodes, knownEffects, t, { maskUnknownNodeNames })), [items, knownNodes, knownEffects, t, maskUnknownNodeNames]);
+  const normalizedQuery = query.trim();
 
-  function activate(log: AuditLog) {
+  const fetchPage = useCallback(
+    async (mode: "replace" | "append", cursor?: string | null) => {
+      if (mode === "replace") {
+        setIsLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+      setLoadError("");
+      try {
+        const params = new URLSearchParams();
+        params.set("limit", String(PAGE_SIZE));
+        if (cursor) params.set("cursor", cursor);
+        if (actionFilter !== "ALL") params.set("action", actionFilter);
+        if (entityFilter !== "ALL") params.set("entity", entityFilter);
+        if (normalizedQuery) params.set("query", normalizedQuery);
+        if (mode === "replace" && focusedAuditId) params.set("focusId", focusedAuditId);
+
+        const response = await fetch(`/api/characters/${characterId}/audit?${params.toString()}`);
+        if (!response.ok) throw new Error("Failed to load audit history");
+        const body = (await response.json()) as AuditListResponse;
+
+        setItems((current) => mode === "append" ? dedupeAuditLogs([...current, ...body.items]) : body.items);
+        if (mode === "replace") {
+          setExpandedIds(focusedAuditId ? new Set([focusedAuditId]) : new Set());
+        }
+        setNextCursor(body.nextCursor);
+        setTotal(body.total);
+      } catch {
+        setLoadError(t("history.loadFailed"));
+      } finally {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+      }
+    },
+    [actionFilter, characterId, entityFilter, focusedAuditId, normalizedQuery, t],
+  );
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      if (firstFilterRun.current && !focusedAuditId) {
+        firstFilterRun.current = false;
+        return;
+      }
+      firstFilterRun.current = false;
+      void fetchPage("replace");
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [fetchPage, focusedAuditId]);
+
+  useEffect(() => {
+    if (!focusedAuditId) return;
+    setHighlightedId(focusedAuditId);
+    setExpandedIds((current) => new Set([...current, focusedAuditId]));
+    window.setTimeout(() => {
+      document.getElementById(`audit-${focusedAuditId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  }, [focusedAuditId, items]);
+
+  function activate(log: AuditLogWithActor) {
     if (log.entityType === "CharacterNode") {
       const node = knownNodes.get(log.entityId);
       if (!node) return;
@@ -79,8 +154,25 @@ export function AuditList({
     }
   }
 
-  function resetVisible() {
-    setVisibleCount(PAGE_SIZE);
+  function linkToAuditLog(logId: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("audit", logId);
+    window.history.replaceState(null, "", url.toString());
+    setHighlightedId(logId);
+    setExpandedIds((current) => new Set([...current, logId]));
+    void navigator.clipboard?.writeText(url.toString());
+  }
+
+  function toggleExpanded(logId: string) {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(logId)) {
+        next.delete(logId);
+      } else {
+        next.add(logId);
+      }
+      return next;
+    });
   }
 
   return (
@@ -91,10 +183,7 @@ export function AuditList({
           <Input
             className="pl-9"
             value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              resetVisible();
-            }}
+            onChange={(event) => setQuery(event.target.value)}
             placeholder={t("history.search")}
           />
         </div>
@@ -102,10 +191,7 @@ export function AuditList({
           <select
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"
             value={actionFilter}
-            onChange={(event) => {
-              setActionFilter(event.target.value as AuditAction | "ALL");
-              resetVisible();
-            }}
+            onChange={(event) => setActionFilter(event.target.value as AuditAction | "ALL")}
           >
             <option value="ALL">{t("history.allActions")}</option>
             <option value="CREATE">{t("history.create")}</option>
@@ -118,10 +204,7 @@ export function AuditList({
           <select
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"
             value={entityFilter}
-            onChange={(event) => {
-              setEntityFilter(event.target.value as AuditEntity);
-              resetVisible();
-            }}
+            onChange={(event) => setEntityFilter(event.target.value as AuditEntity)}
           >
             {entityOptions.map((entity) => (
               <option key={entity} value={entity}>
@@ -134,21 +217,49 @@ export function AuditList({
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>
-          {t("history.showing", { visible: visible.length, total: filtered.length })}
+          {t("history.showing", { visible: items.length, total })}
         </span>
         {(actionFilter !== "ALL" || entityFilter !== "ALL" || normalizedQuery) && <Badge>{t("common.filtered")}</Badge>}
       </div>
 
-      {visible.length === 0 ? (
+      {loadError && <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{loadError}</p>}
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {t("history.loading")}
+        </div>
+      ) : items.length === 0 ? (
         <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">{t("history.emptyFiltered")}</p>
       ) : (
         <div className="space-y-3">
-          {visible.map((item) => {
+          {formatted.map((item) => {
             const canActivate = hasActivationTarget(item.log, knownNodes, knownEffects);
+            const isExpanded = expandedIds.has(item.log.id);
+            const hasDetails = Boolean(item.description) || item.changes.length > 0;
             return (
-              <article key={item.log.id} className="rounded-md border p-3 text-sm">
+              <article
+                id={`audit-${item.log.id}`}
+                key={item.log.id}
+                className={`rounded-md border p-2 text-sm transition-colors ${highlightedId === item.log.id ? "border-primary bg-primary/5 shadow-sm" : ""}`}
+              >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <div className="flex min-w-0 items-start gap-2">
+                    {hasDetails ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => toggleExpanded(item.log.id)}
+                        title={isExpanded ? t("history.collapseRecord") : t("history.expandRecord")}
+                      >
+                        {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </Button>
+                    ) : (
+                      <span className="h-7 w-7 shrink-0" />
+                    )}
+                    <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge>{actionLabel(item.log.action, t)}</Badge>
                       <span className="font-medium">{item.title}</span>
@@ -156,15 +267,21 @@ export function AuditList({
                     <div className="mt-1 text-xs text-muted-foreground">
                       {actorLabel(item.log, t)} · <time>{new Date(item.log.createdAt).toLocaleString(language === "uk" ? "uk-UA" : "en-US")}</time>
                     </div>
+                    </div>
                   </div>
-                  {canActivate && (
-                    <Button type="button" size="icon" variant="ghost" onClick={() => activate(item.log)} title={t("history.openRelated")}>
-                      <ExternalLink className="h-4 w-4" />
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button type="button" size="icon" variant="ghost" onClick={() => linkToAuditLog(item.log.id)} title={t("history.copyAuditLink")}>
+                      <Link2 className="h-4 w-4" />
                     </Button>
-                  )}
+                    {canActivate && (
+                      <Button type="button" size="icon" variant="ghost" onClick={() => activate(item.log)} title={t("history.openRelated")}>
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                {item.description && <p className="mt-2 text-muted-foreground">{item.description}</p>}
-                {item.changes.length > 0 && (
+                {isExpanded && item.description && <p className="mt-2 pl-9 text-muted-foreground">{item.description}</p>}
+                {isExpanded && item.changes.length > 0 && (
                   <div className="mt-3 space-y-2">
                     {item.changes.map((change) => (
                       <div key={change.label} className="rounded-md bg-muted/50 p-2">
@@ -184,13 +301,25 @@ export function AuditList({
         </div>
       )}
 
-      {visibleCount < filtered.length && (
-        <Button type="button" variant="outline" className="w-full" onClick={() => setVisibleCount((value) => value + PAGE_SIZE)}>
+      {nextCursor && (
+        <Button type="button" variant="outline" className="w-full" disabled={isLoadingMore} onClick={() => fetchPage("append", nextCursor)}>
+          {isLoadingMore && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {t("history.loadMore")}
         </Button>
       )}
     </div>
   );
+}
+
+function dedupeAuditLogs(logs: AuditLogWithActor[]) {
+  const seen = new Set<string>();
+  const result: AuditLogWithActor[] = [];
+  for (const log of logs) {
+    if (seen.has(log.id)) continue;
+    seen.add(log.id);
+    result.push(log);
+  }
+  return result;
 }
 
 function formatLog(
@@ -310,7 +439,7 @@ function stringValue(value: unknown) {
 }
 
 function entityDisplayName(
-  log: AuditLog,
+  log: AuditLogWithActor,
   oldValue: Record<string, unknown>,
   newValue: Record<string, unknown>,
   nodes: Map<string, CharacterNodeModel>,
@@ -325,7 +454,7 @@ function entityDisplayName(
   return shortId(log.entityId);
 }
 
-function hasActivationTarget(log: AuditLog, nodes: Map<string, CharacterNodeModel>, effects: Map<string, EffectDefinition>) {
+function hasActivationTarget(log: AuditLogWithActor, nodes: Map<string, CharacterNodeModel>, effects: Map<string, EffectDefinition>) {
   if (log.entityType === "CharacterNode") return nodes.has(log.entityId);
   if (log.entityType === "Effect") return effects.has(log.entityId);
   return log.entityType === "Character" || log.entityType === "CharacterAssignment" || log.entityType === "EntityTemplate";
