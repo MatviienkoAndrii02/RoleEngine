@@ -118,7 +118,7 @@ export const useCharacterUiStore = create<CharacterUiState>((set) => ({
     try {
       const after = await fetchImpactSnapshot(characterId);
       const report = compareImpactSnapshots(label, before, after);
-      set({ impactReport: hasImpact(report) ? report : { ...report, valueChanges: [], addedNodes: [], removedNodes: [] }, impactError: null });
+      set({ impactReport: hasImpact(report) ? report : null, impactError: null });
     } catch {
       set({ impactError: "after" });
     }
