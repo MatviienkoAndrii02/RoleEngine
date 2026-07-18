@@ -17,6 +17,7 @@ import { conditionExpressionSummary, fieldLabel, nodeSummary, sourceSummary } fr
 import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
 import { NodeIconPicker } from "@/components/characters/node-icons";
 import { NodePicker } from "@/components/characters/node-picker";
+import { clearFormDraft, stringDraftValue, useFormDraft } from "@/components/forms/use-form-draft";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 import { useCharacterUiStore } from "@/store/character-ui-store";
@@ -32,6 +33,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   const { t } = useI18n();
   const router = useRouter();
   const trackImpact = useCharacterUiStore((state) => state.trackImpact);
+  const draftKey = `effect:structural:${characterId ? `character:${characterId}` : `template:${templateId}`}`;
   const [operation, setOperation] = useState<"CREATE_NODE" | "CREATE_GROUP" | "PATCH_NODE_PROPS">("CREATE_NODE");
   const [nodeType, setNodeType] = useState<NodeType>("NUMBER");
   const [targetNodeId, setTargetNodeId] = useState("");
@@ -43,6 +45,19 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
+  const { restored, clearDraft, formDraftProps } = useFormDraft({
+    draftKey,
+    formRef,
+    enabled: !pending,
+    onRestore: (values) => {
+      setOperation(readDraftStructuralOperation(values, "operation", "CREATE_NODE"));
+      setNodeType(readDraftNodeType(values, "createdType", "NUMBER"));
+      setTargetNodeId(stringDraftValue(values, "targetNodeId"));
+      setPatchField(stringDraftValue(values, "patchField"));
+      setPatchMode(readDraftPatchMode(values, "patchMode", "static"));
+      setSourceKind(readDraftSourceKind(values, "sourceKind", "node"));
+    },
+  });
   const [preview, setPreview] = useState<{ condition: string; actions: string[]; warnings: string[] }>(() => ({
     condition: t("effect.conditionAlways"),
     actions: [t("effect.previewSelectTarget")],
@@ -156,6 +171,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
       setError(await localizedApiError(response, t, "effect.saveFailed"));
       return;
     }
+    clearFormDraft(draftKey);
     setOperation("CREATE_NODE");
     setNodeType("NUMBER");
     setTargetNodeId("");
@@ -168,13 +184,21 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   }
 
   return (
-    <form key={formKey} ref={formRef} action={submit} onSubmitCapture={() => setValidationAttempted(true)} onInvalidCapture={() => setValidationAttempted(true)} className="space-y-3">
+    <form key={formKey} ref={formRef} action={submit} onSubmitCapture={() => setValidationAttempted(true)} onInvalidCapture={() => setValidationAttempted(true)} className="space-y-3" {...formDraftProps}>
+      {restored && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/10 p-2 text-xs text-primary">
+          <span>{t("draft.restored")}</span>
+          <button type="button" className="font-medium underline-offset-2 hover:underline" onClick={clearDraft}>
+            {t("draft.discard")}
+          </button>
+        </div>
+      )}
       <Input name="name" required placeholder={t("effect.name")} />
       <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
         <EffectConditionBuilder nodes={nodes} slots={slots} onConditionChange={refreshPreview} />
       </EffectEditorSection>
       <EffectEditorSection title={t("effect.action")} summary={actionSummary} error={targetError}>
-        <select value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)} className={selectClass}>
+        <select name="operation" value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)} className={selectClass}>
           <option value="CREATE_NODE">{t("effect.createNode")}</option>
           <option value="CREATE_GROUP">{t("effect.createGroup")}</option>
           <option value="PATCH_NODE_PROPS">{t("effect.patchNode")}</option>
@@ -198,7 +222,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
         <EffectEditorSection title={t("effect.createdNodeName")} summary={`${operation === "CREATE_GROUP" ? "GROUP" : nodeType} -> ${nodeSummary(nodes, targetNodeId, slots, rootLabel) || rootLabel}`}>
           <Input name="createdNodeName" required placeholder={t("effect.createdNodeName")} />
           {operation === "CREATE_NODE" && (
-            <select value={nodeType} onChange={(event) => setNodeType(event.target.value as NodeType)} className={selectClass}>
+            <select name="createdType" value={nodeType} onChange={(event) => setNodeType(event.target.value as NodeType)} className={selectClass}>
               {nodeTypes.map((type) => <option key={type}>{type}</option>)}
             </select>
           )}
@@ -278,7 +302,7 @@ function PatchControls({
         {fields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}
       </select>
       {selectedField.derived && (
-        <select value={mode} onChange={(event) => onModeChange(event.target.value as "static" | "source")} className={selectClass}>
+        <select name="patchMode" value={mode} onChange={(event) => onModeChange(event.target.value as "static" | "source")} className={selectClass}>
           <option value="static">{t("effect.patchModeStatic")}</option>
           <option value="source">{t("effect.patchModeSource")}</option>
         </select>
@@ -349,6 +373,25 @@ function parseTemplateSelectValue(value: string) {
     : { kind: "node" as const, id: value };
 }
 
+function readDraftStructuralOperation(values: Record<string, unknown>, name: string, fallback: "CREATE_NODE" | "CREATE_GROUP" | "PATCH_NODE_PROPS") {
+  const value = typeof values[name] === "string" ? values[name] : fallback;
+  return value === "CREATE_NODE" || value === "CREATE_GROUP" || value === "PATCH_NODE_PROPS" ? value : fallback;
+}
+
+function readDraftNodeType(values: Record<string, unknown>, name: string, fallback: NodeType): NodeType {
+  const value = typeof values[name] === "string" ? values[name] : fallback;
+  return nodeTypes.includes(value as NodeType) ? value as NodeType : fallback;
+}
+
+function readDraftPatchMode(values: Record<string, unknown>, name: string, fallback: "static" | "source") {
+  const value = typeof values[name] === "string" ? values[name] : fallback;
+  return value === "static" || value === "source" ? value : fallback;
+}
+
+function readDraftSourceKind(values: Record<string, unknown>, name: string, fallback: EditableEffectSourceKind): EditableEffectSourceKind {
+  const value = typeof values[name] === "string" ? values[name] : fallback;
+  return value === "node" || value === "formula" || value === "number" ? value : fallback;
+}
 
 function operationLabel(operation: "CREATE_NODE" | "CREATE_GROUP" | "PATCH_NODE_PROPS", t: ReturnType<typeof useI18n>["t"]) {
   if (operation === "CREATE_GROUP") return t("effect.createGroup");

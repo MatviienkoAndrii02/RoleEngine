@@ -13,6 +13,7 @@ import { EffectPreview } from "@/components/characters/effect-preview";
 import { EffectSourceEditor, readEditableEffectSource, sourceKindLabel, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
 import { conditionExpressionSummary, fieldLabel, nodeSummary, numericEffectSummary, sourceSummary } from "@/components/characters/effect-summary";
 import { NodePicker } from "@/components/characters/node-picker";
+import { clearFormDraft, stringDraftValue, useFormDraft } from "@/components/forms/use-form-draft";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 import { useCharacterUiStore } from "@/store/character-ui-store";
@@ -28,6 +29,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
   const router = useRouter();
   const trackImpact = useCharacterUiStore((state) => state.trackImpact);
   const endpoint = characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`;
+  const draftKey = `effect:numeric:${characterId ? `character:${characterId}` : `template:${templateId}`}`;
   const numeric = nodes.filter((n) => n.type === "NUMBER" || n.type === "BAR");
   const numericSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"));
   const [targetNodeId, setTargetNodeId] = useState("");
@@ -39,6 +41,17 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
+  const { restored, clearDraft, formDraftProps } = useFormDraft({
+    draftKey,
+    formRef,
+    enabled: !pending,
+    onRestore: (values) => {
+      setTargetNodeId(stringDraftValue(values, "targetNodeId"));
+      setSourceKind(readDraftSourceKind(values, "sourceKind", "number"));
+      setOperation(readDraftNumericOperation(values, "operation", "ADD"));
+      setNumericField(stringDraftValue(values, "numericField") || "value");
+    },
+  });
   const [preview, setPreview] = useState<{ condition: string; actions: string[]; warnings: string[] }>(() => ({
     condition: t("effect.conditionAlways"),
     actions: [t("effect.previewSelectTarget")],
@@ -90,6 +103,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
       setError(await localizedApiError(response, t, "effect.saveFailed"));
       return;
     }
+    clearFormDraft(draftKey);
     setTargetNodeId("");
     setSourceKind("number");
     setOperation("ADD");
@@ -100,7 +114,15 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
   }
 
   return (
-    <form key={formKey} ref={formRef} action={submit} onSubmitCapture={() => setValidationAttempted(true)} onInvalidCapture={() => setValidationAttempted(true)} className="space-y-3">
+    <form key={formKey} ref={formRef} action={submit} onSubmitCapture={() => setValidationAttempted(true)} onInvalidCapture={() => setValidationAttempted(true)} className="space-y-3" {...formDraftProps}>
+      {restored && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/10 p-2 text-xs text-primary">
+          <span>{t("draft.restored")}</span>
+          <button type="button" className="font-medium underline-offset-2 hover:underline" onClick={clearDraft}>
+            {t("draft.discard")}
+          </button>
+        </div>
+      )}
       <Input name="name" required placeholder={t("effect.name")} />
       <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
         <EffectConditionBuilder nodes={numeric} slots={numericSlots} onConditionChange={refreshPreview} />
@@ -144,6 +166,16 @@ function parseTemplateSelectValue(value: string) {
   return value.startsWith("slot:")
     ? { kind: "slot" as const, id: value.slice("slot:".length) }
     : { kind: "node" as const, id: value };
+}
+
+function readDraftSourceKind(values: Record<string, unknown>, name: string, fallback: EditableEffectSourceKind): EditableEffectSourceKind {
+  const value = typeof values[name] === "string" ? values[name] : fallback;
+  return value === "node" || value === "formula" || value === "number" ? value : fallback;
+}
+
+function readDraftNumericOperation(values: Record<string, unknown>, name: string, fallback: NumericOperation): NumericOperation {
+  const value = typeof values[name] === "string" ? values[name] : fallback;
+  return value === "ADD" || value === "SUBTRACT" || value === "MULTIPLY" || value === "PERCENT_BONUS" || value === "SET_BAR_MAX" ? value : fallback;
 }
 
 function numericTargetSummary(target: string, field: string, operation: string, source: string, t: ReturnType<typeof useI18n>["t"]) {

@@ -37,7 +37,7 @@ export function EffectSourceEditor({
 
   return (
     <div className="space-y-3">
-      <select value={kind} onChange={(event) => onKindChange(event.target.value as EditableEffectSourceKind)} className={selectClass}>
+      <select name={sourceFieldName(prefix, "sourceKind")} value={kind} onChange={(event) => onKindChange(event.target.value as EditableEffectSourceKind)} className={selectClass}>
         <option value="number">{t("effect.sourceNumber")}</option>
         <option value="node">{t("effect.sourceNode")}</option>
         <option value="formula">{t("effect.sourceFormula")}</option>

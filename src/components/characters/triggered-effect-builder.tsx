@@ -12,6 +12,7 @@ import { EffectEditorSection } from "@/components/characters/effect-editor-secti
 import { EffectPreview } from "@/components/characters/effect-preview";
 import { conditionExpressionSummary, nodeSummary, triggeredActionSummary } from "@/components/characters/effect-summary";
 import { NodePicker } from "@/components/characters/node-picker";
+import { clearFormDraft, stringDraftValue, useFormDraft, type FormDraftValues } from "@/components/forms/use-form-draft";
 import {
   newTriggeredActionRow,
   readTriggeredAction,
@@ -35,6 +36,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
   const router = useRouter();
   const trackImpact = useCharacterUiStore((state) => state.trackImpact);
   const endpoint = characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`;
+  const draftKey = `effect:triggered:${characterId ? `character:${characterId}` : `template:${templateId}`}`;
   const numericNodes = nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR");
   const containers = nodes.filter((node) => node.type === "CONTAINER" || node.type === "GROUP");
   const numericSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"));
@@ -51,6 +53,17 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
+  const { restored, clearDraft, formDraftProps } = useFormDraft({
+    draftKey,
+    formRef,
+    enabled: !pending,
+    onRestore: (values) => {
+      setTriggerKind(readDraftTriggerKind(values, "triggerKind", "condition"));
+      setTriggerNodeId(stringDraftValue(values, "triggerNodeId"));
+      const restoredRows = readDraftActionRows(values);
+      if (restoredRows.length > 0) setRows(restoredRows);
+    },
+  });
   const [preview, setPreview] = useState<{ condition: string; actions: string[]; warnings: string[] }>(() => ({
     condition: t("effect.conditionAlways"),
     actions: [t("effect.actionsCount", { count: 1 })],
@@ -111,6 +124,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
       setError(await localizedApiError(response, t, "effect.saveFailed"));
       return;
     }
+    clearFormDraft(draftKey);
     setTriggerKind("condition");
     setTriggerNodeId("");
     setRows([newTriggeredActionRow()]);
@@ -120,10 +134,18 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
   }
 
   return (
-    <form key={formKey} ref={formRef} action={submit} onSubmitCapture={() => setValidationAttempted(true)} onInvalidCapture={() => setValidationAttempted(true)} className="space-y-4">
+    <form key={formKey} ref={formRef} action={submit} onSubmitCapture={() => setValidationAttempted(true)} onInvalidCapture={() => setValidationAttempted(true)} className="space-y-4" {...formDraftProps}>
+      {restored && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/10 p-2 text-xs text-primary">
+          <span>{t("draft.restored")}</span>
+          <button type="button" className="font-medium underline-offset-2 hover:underline" onClick={clearDraft}>
+            {t("draft.discard")}
+          </button>
+        </div>
+      )}
       <Input name="name" required placeholder={t("effect.name")} />
       <EffectEditorSection title={t("effect.trigger")} summary={triggerKind === "nodeClick" ? t("effect.triggerNodeClick") : t("effect.triggerCondition")} error={triggerError}>
-        <select value={triggerKind} onChange={(event) => setTriggerKind(event.target.value as TriggerKind)} className={selectClass}>
+        <select name="triggerKind" value={triggerKind} onChange={(event) => setTriggerKind(event.target.value as TriggerKind)} className={selectClass}>
           <option value="condition">{t("effect.triggerCondition")}</option>
           <option value="nodeClick">{t("effect.triggerNodeClick")}</option>
         </select>
@@ -183,4 +205,50 @@ function triggeredActionKindLabel(kind: TriggeredActionRow["kind"], t: ReturnTyp
 
 function actionRequiresTarget(row: TriggeredActionRow) {
   return row.kind === "NUMERIC" || row.kind === "PATCH_NODE_PROPS";
+}
+
+function readDraftTriggerKind(values: FormDraftValues, name: string, fallback: TriggerKind): TriggerKind {
+  const value = stringDraftValue(values, name);
+  return value === "condition" || value === "nodeClick" ? value : fallback;
+}
+
+function readDraftActionRows(values: FormDraftValues): TriggeredActionRow[] {
+  const indexes = Object.keys(values)
+    .map((key) => /^action-(\d+)-kind$/.exec(key)?.[1])
+    .filter((value): value is string => Boolean(value))
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value))
+    .sort((left, right) => left - right);
+  return indexes.map((index) => {
+    const kind = readDraftActionKind(values, `action-${index}-kind`);
+    return {
+      id: newTriggeredActionRow().id,
+      kind,
+      sourceKind: readDraftSourceKind(values, `action-${index}-sourceKind`, "number"),
+      targetNodeId: readDraftActionTarget(values, index, kind),
+      createdType: readDraftNodeType(values, `action-${index}-createdType`, "NUMBER"),
+      patchField: stringDraftValue(values, `action-${index}-patchField`),
+    };
+  });
+}
+
+function readDraftActionKind(values: FormDraftValues, name: string): TriggeredActionRow["kind"] {
+  const value = stringDraftValue(values, name);
+  return value === "CREATE_NODE" || value === "CREATE_GROUP" || value === "PATCH_NODE_PROPS" || value === "NUMERIC" ? value : "NUMERIC";
+}
+
+function readDraftActionTarget(values: FormDraftValues, index: number, kind: TriggeredActionRow["kind"]) {
+  if (kind === "PATCH_NODE_PROPS") return stringDraftValue(values, `action-${index}-patchTargetNodeId`);
+  if (kind === "CREATE_NODE" || kind === "CREATE_GROUP") return stringDraftValue(values, `action-${index}-parentNodeId`);
+  return stringDraftValue(values, `action-${index}-targetNodeId`);
+}
+
+function readDraftSourceKind(values: FormDraftValues, name: string, fallback: TriggeredActionRow["sourceKind"]): TriggeredActionRow["sourceKind"] {
+  const value = stringDraftValue(values, name);
+  return value === "node" || value === "formula" || value === "number" ? value : fallback;
+}
+
+function readDraftNodeType(values: FormDraftValues, name: string, fallback: TriggeredActionRow["createdType"]): TriggeredActionRow["createdType"] {
+  const value = stringDraftValue(values, name);
+  return value === "NUMBER" || value === "BAR" || value === "TEXT" || value === "TABLE" || value === "CONTAINER" || value === "GROUP" || value === "LINK" ? value : fallback;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Save, Trash2, X } from "lucide-react";
 import { getNodeBreadcrumb, NODE_ICON_NAMES, type CharacterNodeModel, type NodeData, type NodeIconName, type NodeType } from "@/domain/nodes";
@@ -14,6 +14,7 @@ import { NodeAccentColorPicker } from "@/components/characters/node-accent-color
 import { NodePicker } from "@/components/characters/node-picker";
 import { ApplyTemplate } from "@/components/characters/apply-template";
 import { ApplyTemplateToTemplate } from "@/components/templates/apply-template-to-template";
+import { clearFormDraft, stringDraftValue, useFormDraft, type FormDraftValues } from "@/components/forms/use-form-draft";
 import type { TemplateSlotModel } from "@/domain/template-slots";
 import type { TemplatePickerOption } from "@/components/templates/template-filter-select";
 import { useI18n } from "@/i18n/client";
@@ -24,6 +25,11 @@ export type LinkableCharacterOption = {
 };
 
 const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP", "LINK"];
+
+function readDraftNodeType(values: FormDraftValues): NodeType | null {
+  const value = stringDraftValue(values, "type");
+  return nodeTypes.includes(value as NodeType) ? value as NodeType : null;
+}
 
 export function NodeEditor({
   characterId,
@@ -52,6 +58,11 @@ export function NodeEditor({
   const apiBase = characterId
     ? `/api/characters/${characterId}/nodes`
     : `/api/templates/${templateId}/nodes`;
+  const active = mode === "edit" ? selected : null;
+  const selectedParentId = mode === "add" ? selected?.id ?? null : null;
+  const templateParentId = mode === "add" ? selected?.id ?? null : null;
+  const draftScope = characterId ? `character:${characterId}` : `template:${templateId}`;
+  const draftKey = `node:${draftScope}:${mode}:${active?.id ?? selectedParentId ?? "root"}`;
 
   function cancel() {
     setEditorMode("add");
@@ -85,6 +96,7 @@ export function NodeEditor({
       setError(t("node.saveFailed"));
       return;
     }
+    clearFormDraft(draftKey);
     cancel();
     router.refresh();
   }
@@ -98,13 +110,11 @@ export function NodeEditor({
       setError(t("node.deleteFailed"));
       return;
     }
+    clearFormDraft(draftKey);
     cancel();
     router.refresh();
   }
 
-  const active = mode === "edit" ? selected : null;
-  const selectedParentId = mode === "add" ? selected?.id ?? null : null;
-  const templateParentId = mode === "add" ? selected?.id ?? null : null;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -113,6 +123,7 @@ export function NodeEditor({
       </div>
       <NodeForm
         key={`${mode}-${active?.id ?? "new"}-${selectedParentId ?? "root"}-${formRevision}`}
+        draftKey={draftKey}
         nodes={nodes}
         active={active}
         selectedParentId={selectedParentId}
@@ -140,7 +151,8 @@ export function NodeEditor({
   );
 }
 
-function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, submit, cancel, remove, linkableCharacters }: {
+function NodeForm({ draftKey, nodes, active, selectedParentId, rootLabel, pending, error, submit, cancel, remove, linkableCharacters }: {
+  draftKey: string;
   nodes: CharacterNodeModel[];
   active: CharacterNodeModel | null;
   selectedParentId: string | null | undefined;
@@ -153,8 +165,18 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
   linkableCharacters: LinkableCharacterOption[];
 }) {
   const { t } = useI18n();
+  const formRef = useRef<HTMLFormElement>(null);
   const initialType = active?.type ?? "NUMBER";
   const [type, setType] = useState<NodeType>(initialType);
+  const { restored, clearDraft, formDraftProps } = useFormDraft({
+    draftKey,
+    formRef,
+    enabled: !pending,
+    onRestore: (values) => {
+      const restoredType = readDraftNodeType(values);
+      if (restoredType && !active) setType(restoredType);
+    },
+  });
   const parentOptions = active ? nodes.filter((node) => canUseAsParent(node, active, nodes)) : nodes;
   const activeBreadcrumb = active ? getNodeBreadcrumb(active, nodes) : "";
 
@@ -163,7 +185,15 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
   }, [initialType]);
 
   return (
-    <form action={submit} className="space-y-4">
+    <form ref={formRef} action={submit} className="space-y-4" {...formDraftProps}>
+      {restored && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/10 p-2 text-xs text-primary">
+          <span>{t("draft.restored")}</span>
+          <button type="button" className="font-medium underline-offset-2 hover:underline" onClick={clearDraft}>
+            {t("draft.discard")}
+          </button>
+        </div>
+      )}
       {activeBreadcrumb && (
         <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{t("node.context")}:</span>{" "}
@@ -215,7 +245,7 @@ function NodeForm({ nodes, active, selectedParentId, rootLabel, pending, error, 
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex w-full flex-wrap gap-2">
         <Button type="submit" disabled={pending}><Save className="h-4 w-4" />{pending ? t("common.saving") : t("common.save")}</Button>
-        <Button type="button" variant="ghost" disabled={pending} onClick={cancel}><X className="h-4 w-4" />{t("common.cancel")}</Button>
+        <Button type="button" variant="ghost" disabled={pending} onClick={() => { clearDraft(); cancel(); }}><X className="h-4 w-4" />{t("common.cancel")}</Button>
         {remove && <Button type="button" variant="outline" className="ml-auto border-destructive/40 text-destructive hover:bg-destructive/10" disabled={pending} onClick={remove}><Trash2 className="h-4 w-4" />{t("common.delete")}</Button>}
       </div>
     </form>

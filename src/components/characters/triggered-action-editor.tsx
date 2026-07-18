@@ -152,6 +152,7 @@ export function TriggeredActionEditor({
           <div className="min-w-0 flex-1 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <select
+                name={`${fieldPrefix(fieldNamespace, index)}-kind`}
                 value={row.kind}
                 onChange={(event) => {
                   const nextKind = event.target.value as TriggeredActionRow["kind"];
@@ -231,7 +232,7 @@ function CreateActionFields({ row, index, containers, containerSlotOptions, root
     <div className="space-y-3">
       <NodePicker name={`${prefix}-parentNodeId`} nodes={containers} value={row.targetNodeId || "__ROOT__"} onChange={(value) => updateTriggeredActionRow(setRows, row.id, { targetNodeId: value })} extraOptions={containerSlotOptions} allowedTypes={["CONTAINER", "GROUP"]} includeRoot rootValue="__ROOT__" rootLabel={rootLabel} required placeholder={t("effect.place")} compact />
       <Input name={`${prefix}-createdName`} required defaultValue={originalAction?.createNode.name ?? ""} placeholder={t("effect.createdNodeName")} />
-      {row.kind === "CREATE_NODE" && <select value={row.createdType} onChange={(event) => updateTriggeredActionRow(setRows, row.id, { createdType: event.target.value as NodeType })} className={selectClass}>{creatableNodeTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select>}
+      {row.kind === "CREATE_NODE" && <select name={`${prefix}-createdType`} value={row.createdType} onChange={(event) => updateTriggeredActionRow(setRows, row.id, { createdType: event.target.value as NodeType })} className={selectClass}>{creatableNodeTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select>}
       <Input name={`${prefix}-createdDescription`} defaultValue={String(data.description ?? "")} placeholder={t("common.description")} />
       <NodeIconPicker type={type} name={`${prefix}-icon`} defaultValue={typeof data.icon === "string" ? data.icon : undefined} />
       <NodeAccentColorPicker name={`${prefix}-accentColor`} defaultValue={typeof data.accentColor === "string" ? data.accentColor : undefined} />

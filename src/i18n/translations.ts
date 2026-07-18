@@ -564,6 +564,8 @@ export const translations = {
     "impact.effectDeleted": "Видалено ефект",
     "impact.triggerRun": "Запущено тригерний ефект",
     "impact.templateApplied": "Додано з шаблону",
+    "draft.restored": "Відновлено незбережену чернетку.",
+    "draft.discard": "Скинути",
 
     "createCharacter.back": "До персонажів",
     "createCharacter.title": "Новий персонаж",
@@ -1134,6 +1136,8 @@ export const translations = {
     "impact.effectDeleted": "Deleted effect",
     "impact.triggerRun": "Ran triggered effect",
     "impact.templateApplied": "Added from template",
+    "draft.restored": "Restored an unsaved draft.",
+    "draft.discard": "Discard",
 
     "createCharacter.back": "Back to characters",
     "createCharacter.title": "New character",
