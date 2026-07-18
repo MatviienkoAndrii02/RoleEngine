@@ -173,6 +173,13 @@ export const translations = {
     "character.dependencies": "Залежності",
     "character.history": "Історія",
 
+    "playerPreview.gmTitle": "Режим GM",
+    "playerPreview.gmDescription": "Ви бачите повне дерево, редактори, приховані вузли та службові дані.",
+    "playerPreview.activeTitle": "Перегляд як Player",
+    "playerPreview.activeDescription": "Показано тільки те, що бачить гравець: приховані вузли, GM-редактори й службові назви прибрані.",
+    "playerPreview.enter": "Переглянути як Player",
+    "playerPreview.exit": "Повернути режим GM",
+
     "diagnostics.persistedJsonTitle": "Є пошкоджені JSON-записи з бази даних",
     "diagnostics.persistedJsonRecord": "Запис «{name}», поле {field}",
     "diagnostics.moreInvalid": "+{count} інших невалідних записів",
@@ -710,6 +717,13 @@ export const translations = {
     "character.nodeArchive": "Node archive",
     "character.dependencies": "Dependencies",
     "character.history": "History",
+
+    "playerPreview.gmTitle": "GM mode",
+    "playerPreview.gmDescription": "You can see the full tree, editors, hidden nodes, and GM-only data.",
+    "playerPreview.activeTitle": "Viewing as Player",
+    "playerPreview.activeDescription": "Only the player-visible view is shown: hidden nodes, GM editors, and internal names are removed.",
+    "playerPreview.enter": "View as Player",
+    "playerPreview.exit": "Return to GM mode",
 
     "diagnostics.persistedJsonTitle": "Some persisted JSON records are invalid",
     "diagnostics.persistedJsonRecord": "Record \"{name}\", field {field}",

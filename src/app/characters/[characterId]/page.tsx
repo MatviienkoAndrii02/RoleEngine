@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { ReactNode } from "react";
 import { diagnoseEffectReferences } from "@/domain/effects";
 import { buildNodeTree, type CharacterNodeModel } from "@/domain/nodes";
 import { removePlayerHiddenSubtrees } from "@/domain/node-visibility";
@@ -7,6 +8,7 @@ import { parseTemplateTagColor } from "@/domain/template-tags";
 import { DependencyEngine, type NodeCalculation } from "@/engine/dependency-engine";
 import { CharacterTree } from "@/components/characters/character-tree";
 import { CharacterLiveRefresh } from "@/components/characters/character-live-refresh";
+import { CharacterViewMode } from "@/components/characters/character-view-mode";
 import { NodeEditor } from "@/components/characters/node-editor";
 import { EffectComposer } from "@/components/characters/effect-composer";
 import { EffectManager } from "@/components/characters/effect-manager";
@@ -99,21 +101,22 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
     }
     return { ...node, data: patchedData } as CharacterNodeModel;
   });
-  const visibleDisplayNodes = canEdit ? displayNodes : removePlayerHiddenSubtrees(displayNodes);
-  const visibleNodeIds = new Set(visibleDisplayNodes.map((node) => node.id));
-  const linkedDisplayNodes = await resolveCharacterNodeLinks({
-    nodes: visibleDisplayNodes,
+  const playerDisplayNodes = removePlayerHiddenSubtrees(displayNodes);
+  const playerNodeIds = new Set(playerDisplayNodes.map((node) => node.id));
+  const linkedFullDisplayNodes = await resolveCharacterNodeLinks({
+    nodes: displayNodes,
     userId: user.id,
     missingLabel: t("node.linkUnavailable"),
   });
-  const visibleNodes = nodes.filter((node) => visibleNodeIds.has(node.id));
-  const visibleChangedCalculations = canEdit
-    ? changedCalculations
-    : changedCalculations.filter((calculation) => visibleNodeIds.has(calculation.nodeId));
-  const visibleChangedCalculationNodeIds = new Set(visibleChangedCalculations.map((calculation) => calculation.nodeId));
-  const visibleChangedDependencyEdges = canEdit
-    ? changedDependencyEdges
-    : changedDependencyEdges.filter((edge) => visibleChangedCalculationNodeIds.has(edge.targetNodeId));
+  const linkedPlayerDisplayNodes = await resolveCharacterNodeLinks({
+    nodes: playerDisplayNodes,
+    userId: user.id,
+    missingLabel: t("node.linkUnavailable"),
+  });
+  const playerNodes = nodes.filter((node) => playerNodeIds.has(node.id));
+  const playerChangedCalculations = changedCalculations.filter((calculation) => playerNodeIds.has(calculation.nodeId));
+  const playerChangedCalculationNodeIds = new Set(playerChangedCalculations.map((calculation) => calculation.nodeId));
+  const playerChangedDependencyEdges = changedDependencyEdges.filter((edge) => playerChangedCalculationNodeIds.has(edge.targetNodeId));
   const templates = canEdit
     ? await prisma.entityTemplate.findMany({
         where: { archivedAt: null, OR: [{ workspaceId: data.workspaceId }, { workspaceId: null, isGlobal: true }] },
@@ -158,6 +161,58 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
     archivedNodes: parsedArchivedNodes.nodes,
     t,
   });
+  const gmView = (
+    <CharacterMainGrid
+      treeNodes={linkedFullDisplayNodes}
+      manualTriggers={nodeClickTriggers}
+      dependencyCalculations={changedCalculations}
+      dependencyNodes={nodes}
+      dependencyEdges={changedDependencyEdges}
+      auditNodes={nodes}
+      auditEffects={effects}
+      auditLogs={data.auditLogs}
+      maskAuditNodeNames={false}
+      canEdit={canEdit}
+      settings={
+        canEdit ? (
+          <CharacterSettings
+            character={{
+              id: data.id,
+              name: data.name,
+              description: data.description,
+              ownerId: data.ownerId,
+              assignments: data.assignments.map((assignment) => assignment.user)
+            }}
+            players={players}
+          />
+        ) : null
+      }
+      nodeEditor={canEdit ? <NodeEditor characterId={characterId} nodes={nodes} templates={templateOptions} linkableCharacters={linkableCharacters} /> : null}
+      effectComposer={canEdit ? <EffectComposer characterId={characterId} nodes={nodes} /> : null}
+      effectManager={canEdit ? <EffectManager nodes={nodes} archivedNodes={parsedArchivedNodes.nodes} effects={effects} /> : null}
+      nodeArchive={canEdit ? <NodeArchive characterId={characterId} items={archivedItems} /> : null}
+      counts={{
+        effects: effects.length,
+        archivedNodes: parsedArchivedNodes.nodes.length,
+      }}
+      t={t}
+    />
+  );
+  const playerView = (
+    <CharacterMainGrid
+      treeNodes={linkedPlayerDisplayNodes}
+      manualTriggers={[]}
+      dependencyCalculations={playerChangedCalculations}
+      dependencyNodes={playerNodes}
+      dependencyEdges={playerChangedDependencyEdges}
+      auditNodes={playerNodes}
+      auditEffects={effects}
+      auditLogs={data.auditLogs}
+      maskAuditNodeNames
+      canEdit={false}
+      t={t}
+    />
+  );
 
   return (
     <div className="space-y-6">
@@ -171,57 +226,93 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
 
       <ProblemsPanel problems={problems} />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("character.nodeTree")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CharacterTree nodes={buildNodeTree(linkedDisplayNodes)} searchable manualTriggers={canEdit ? nodeClickTriggers : []} />
-          </CardContent>
-        </Card>
-        <div className="space-y-6">
-          {canEdit && (
-            <SidebarSection id="settings" title={t("character.settings")}>
-              <CharacterSettings
-                character={{
-                  id: data.id,
-                  name: data.name,
-                  description: data.description,
-                  ownerId: data.ownerId,
-                  assignments: data.assignments.map((assignment) => assignment.user)
-                }}
-                players={players}
-              />
-            </SidebarSection>
-          )}
-          {canEdit && (
-            <SidebarSection id="node-editor" title={t("character.nodeEditor")}>
-              <NodeEditor characterId={characterId} nodes={nodes} templates={templateOptions} linkableCharacters={linkableCharacters} />
-            </SidebarSection>
-          )}
-          {canEdit && (
-            <SidebarSection id="effect-composer" title={t("effect.addEffect")}>
-              <EffectComposer characterId={characterId} nodes={nodes} />
-            </SidebarSection>
-          )}
-          {canEdit && (
-            <SidebarSection id="effect-manager" title={t("character.allEffects")} count={effects.length}>
-              <EffectManager nodes={nodes} archivedNodes={parsedArchivedNodes.nodes} effects={effects} />
-            </SidebarSection>
-          )}
-          {canEdit && (
-            <SidebarSection id="node-archive" title={t("character.nodeArchive")} count={parsedArchivedNodes.nodes.length}>
-              <NodeArchive characterId={characterId} items={archivedItems} />
-            </SidebarSection>
-          )}
-          <SidebarSection id="dependencies" title={t("character.dependencies")} count={visibleChangedCalculations.length}>
-            <DependencyPanel calculations={visibleChangedCalculations} nodes={visibleNodes} edges={visibleChangedDependencyEdges} />
+      {canEdit ? <CharacterViewMode gmView={gmView} playerView={playerView} /> : playerView}
+    </div>
+  );
+}
+
+function CharacterMainGrid({
+  treeNodes,
+  manualTriggers,
+  dependencyCalculations,
+  dependencyNodes,
+  dependencyEdges,
+  auditNodes,
+  auditEffects,
+  auditLogs,
+  maskAuditNodeNames = false,
+  canEdit,
+  settings,
+  nodeEditor,
+  effectComposer,
+  effectManager,
+  nodeArchive,
+  counts,
+  t,
+}: {
+  treeNodes: CharacterNodeModel[];
+  manualTriggers: Array<{ effectId: string; nodeId: string; name: string }>;
+  dependencyCalculations: NodeCalculation[];
+  dependencyNodes: CharacterNodeModel[];
+  dependencyEdges: ReturnType<DependencyEngine["evaluate"]>["edges"];
+  auditNodes: CharacterNodeModel[];
+  auditEffects: ReturnType<typeof parseEffectDefinitions>["effects"];
+  auditLogs: Parameters<typeof AuditList>[0]["logs"];
+  maskAuditNodeNames?: boolean;
+  canEdit: boolean;
+  settings?: ReactNode;
+  nodeEditor?: ReactNode;
+  effectComposer?: ReactNode;
+  effectManager?: ReactNode;
+  nodeArchive?: ReactNode;
+  counts?: {
+    effects?: number;
+    archivedNodes?: number;
+  };
+  t: Awaited<ReturnType<typeof getTranslator>>["t"];
+}) {
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("character.nodeTree")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CharacterTree nodes={buildNodeTree(treeNodes)} searchable manualTriggers={manualTriggers} />
+        </CardContent>
+      </Card>
+      <div className="space-y-6">
+        {canEdit && settings && (
+          <SidebarSection id="settings" title={t("character.settings")}>
+            {settings}
           </SidebarSection>
-          <SidebarSection id="history" title={t("character.history")} count={data.auditLogs.length}>
-            <AuditList logs={data.auditLogs} nodes={visibleNodes} effects={effects} maskUnknownNodeNames={!canEdit} />
+        )}
+        {canEdit && nodeEditor && (
+          <SidebarSection id="node-editor" title={t("character.nodeEditor")}>
+            {nodeEditor}
           </SidebarSection>
-        </div>
+        )}
+        {canEdit && effectComposer && (
+          <SidebarSection id="effect-composer" title={t("effect.addEffect")}>
+            {effectComposer}
+          </SidebarSection>
+        )}
+        {canEdit && effectManager && (
+          <SidebarSection id="effect-manager" title={t("character.allEffects")} count={counts?.effects}>
+            {effectManager}
+          </SidebarSection>
+        )}
+        {canEdit && nodeArchive && (
+          <SidebarSection id="node-archive" title={t("character.nodeArchive")} count={counts?.archivedNodes}>
+            {nodeArchive}
+          </SidebarSection>
+        )}
+        <SidebarSection id={canEdit ? "dependencies" : "player-preview-dependencies"} title={t("character.dependencies")} count={dependencyCalculations.length}>
+          <DependencyPanel calculations={dependencyCalculations} nodes={dependencyNodes} edges={dependencyEdges} />
+        </SidebarSection>
+        <SidebarSection id={canEdit ? "history" : "player-preview-history"} title={t("character.history")} count={auditLogs.length}>
+          <AuditList logs={auditLogs} nodes={auditNodes} effects={auditEffects} maskUnknownNodeNames={maskAuditNodeNames} />
+        </SidebarSection>
       </div>
     </div>
   );
