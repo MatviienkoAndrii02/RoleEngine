@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
 import type { EffectSource, TriggeredEffectAction } from "@/domain/effects";
 import type { CharacterNodeModel, NodeType } from "@/domain/nodes";
 import type { TemplateSlotModel } from "@/domain/template-slots";
-import { getNumericPatchFields, getStructuralPatchFields, type PatchFieldDefinition } from "@/domain/node-patches";
+import { getPatchFields, getNumericPatchFields, type PatchFieldDefinition } from "@/domain/node-patches";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
@@ -40,6 +40,7 @@ const commonStructuralFields: PatchFieldDefinition[] = [
   { field: "icon", labelKey: "icons.label", kind: "text", derived: false },
   { field: "accentColor", labelKey: "node.accentColor", kind: "text", derived: false },
 ];
+const commonPatchFields = uniquePatchFields([...commonNumericFields, ...commonStructuralFields]);
 
 export function TriggeredActionEditor({
   row,
@@ -57,6 +58,7 @@ export function TriggeredActionEditor({
   originalAction,
   setRows,
   defaultOpen,
+  showValidationErrors = false,
 }: {
   row: TriggeredActionRow;
   index: number;
@@ -73,9 +75,11 @@ export function TriggeredActionEditor({
   originalAction?: TriggeredEffectAction;
   setRows: Dispatch<SetStateAction<TriggeredActionRow[]>>;
   defaultOpen?: boolean;
+  showValidationErrors?: boolean;
 }) {
   const { t } = useI18n();
   const [dragOver, setDragOver] = useState(false);
+  const rowError = showValidationErrors && actionRequiresTarget(row) && !row.targetNodeId ? t("effect.inlineTargetRequired") : undefined;
 
   function dropAction(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -99,6 +103,7 @@ export function TriggeredActionEditor({
         title={t("effect.actionNumber", { count: index + 1 })}
         summary={actionRowSummary(row, originalAction, nodes, numericNodes, containers, slots, rootLabel, t)}
         defaultOpen={defaultOpen}
+        error={rowError}
       >
         <div className="flex items-start gap-2">
           <div className="flex shrink-0 flex-col gap-1">
@@ -183,7 +188,7 @@ export function TriggeredActionEditor({
               <CreateActionFields row={row} index={index} containers={containers} containerSlotOptions={containerSlotOptions} rootLabel={rootLabel} originalAction={originalAction?.kind === "CREATE_NODE" || originalAction?.kind === "CREATE_GROUP" ? originalAction : undefined} fieldNamespace={fieldNamespace} setRows={setRows} />
             )}
             {row.kind === "PATCH_NODE_PROPS" && (
-              <PatchActionFields row={row} index={index} nodes={nodes} allSlotOptions={allSlotOptions} originalAction={originalAction?.kind === "PATCH_NODE_PROPS" ? originalAction : undefined} fieldNamespace={fieldNamespace} setRows={setRows} />
+              <PatchActionFields row={row} index={index} nodes={nodes} slots={slots} allSlotOptions={allSlotOptions} originalAction={originalAction?.kind === "PATCH_NODE_PROPS" ? originalAction : undefined} fieldNamespace={fieldNamespace} setRows={setRows} />
             )}
           </div>
         </div>
@@ -237,12 +242,13 @@ function CreateActionFields({ row, index, containers, containerSlotOptions, root
   );
 }
 
-function PatchActionFields({ row, index, nodes, allSlotOptions, originalAction, fieldNamespace, setRows }: { row: TriggeredActionRow; index: number; nodes: CharacterNodeModel[]; allSlotOptions: Array<{ value: string; label: string }>; originalAction?: Extract<TriggeredEffectAction, { kind: "PATCH_NODE_PROPS" }>; fieldNamespace: string; setRows: Dispatch<SetStateAction<TriggeredActionRow[]>> }) {
+function PatchActionFields({ row, index, nodes, slots, allSlotOptions, originalAction, fieldNamespace, setRows }: { row: TriggeredActionRow; index: number; nodes: CharacterNodeModel[]; slots: TemplateSlotModel[]; allSlotOptions: Array<{ value: string; label: string }>; originalAction?: Extract<TriggeredEffectAction, { kind: "PATCH_NODE_PROPS" }>; fieldNamespace: string; setRows: Dispatch<SetStateAction<TriggeredActionRow[]>> }) {
   const { t } = useI18n();
   const prefix = fieldPrefix(fieldNamespace, index);
   const selected = parseTemplateSelectValue(row.targetNodeId);
   const target = selected.kind === "node" ? nodes.find((node) => node.id === selected.id) ?? null : null;
-  const fields = target ? getStructuralPatchFields(target.type) : commonStructuralFields;
+  const slot = selected.kind === "slot" ? slots.find((item) => item.id === selected.id) ?? null : null;
+  const fields = target ? getPatchFields(target.type) : slot ? patchFieldsForSlot(slot) : commonPatchFields;
   const selectedField = fields.find((field) => field.field === row.patchField) ?? fields[0] ?? null;
   const patch = originalAction?.patch ?? {};
   return (
@@ -302,7 +308,7 @@ export function readTriggeredAction(row: TriggeredActionRow, data: FormData, ind
 export function triggeredActionToRow(action: TriggeredEffectAction): TriggeredActionRow {
   if (action.kind === "NUMERIC") {
     return {
-      id: crypto.randomUUID(),
+      id: createClientId(),
       kind: "NUMERIC",
       sourceKind: action.source.kind === "templateSlot" ? "node" : action.source.kind === "formula" ? "formula" : action.source.kind,
       targetNodeId: action.targetNodeId,
@@ -312,7 +318,7 @@ export function triggeredActionToRow(action: TriggeredEffectAction): TriggeredAc
   }
   if (action.kind === "PATCH_NODE_PROPS") {
     return {
-      id: crypto.randomUUID(),
+      id: createClientId(),
       kind: "PATCH_NODE_PROPS",
       sourceKind: "number",
       targetNodeId: action.targetNodeId,
@@ -321,7 +327,7 @@ export function triggeredActionToRow(action: TriggeredEffectAction): TriggeredAc
     };
   }
   return {
-    id: crypto.randomUUID(),
+    id: createClientId(),
     kind: action.kind,
     sourceKind: "number",
     targetNodeId: action.parentNodeId ?? "__ROOT__",
@@ -331,7 +337,12 @@ export function triggeredActionToRow(action: TriggeredEffectAction): TriggeredAc
 }
 
 export function newTriggeredActionRow(): TriggeredActionRow {
-  return { id: crypto.randomUUID(), kind: "NUMERIC", sourceKind: "number", targetNodeId: "", createdType: "NUMBER", patchField: "" };
+  return { id: createClientId(), kind: "NUMERIC", sourceKind: "number", targetNodeId: "", createdType: "NUMBER", patchField: "" };
+}
+
+function createClientId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function updateTriggeredActionRow(setRows: Dispatch<SetStateAction<TriggeredActionRow[]>>, id: string, patch: Partial<TriggeredActionRow>) {
@@ -387,6 +398,10 @@ function actionKindLabel(kind: TriggeredActionRow["kind"], t: ReturnType<typeof 
   return t("effect.setNumericField");
 }
 
+function actionRequiresTarget(row: TriggeredActionRow) {
+  return row.kind === "NUMERIC" || row.kind === "PATCH_NODE_PROPS";
+}
+
 function sourceKindSummary(kind: TriggeredActionRow["sourceKind"], t: ReturnType<typeof useI18n>["t"]) {
   if (kind === "node") return t("effect.sourceNode");
   if (kind === "formula") return t("effect.sourceFormula");
@@ -401,12 +416,28 @@ function readPrefixedPatch(row: TriggeredActionRow, data: FormData, nodes: Chara
   const fieldName = String(data.get(`${prefix}-patchField`) || row.patchField);
   const targetNodeIdValue = String(data.get(`${prefix}-patchTargetNodeId`) ?? "");
   const target = nodes.find((node) => node.id === targetNodeIdValue);
-  const definition = (target ? getStructuralPatchFields(target.type) : commonStructuralFields).find((field) => field.field === fieldName);
+  const definition = (target ? getPatchFields(target.type) : commonPatchFields).find((field) => field.field === fieldName);
   if (fieldName === "icon") return { icon: String(data.get(`${prefix}-patchIcon`) ?? "") || undefined };
   if (fieldName === "accentColor") return { accentColor: String(data.get(`${prefix}-patchTextValue`) ?? "") || undefined };
   if (definition?.kind === "boolean") return { [fieldName]: data.get(`${prefix}-patchBooleanValue`) === "on" };
-  if (definition?.kind === "number") return { [fieldName]: Number(data.get(`${prefix}-patchNumberValue`)) };
+  if (definition?.kind === "number") return { [normalizePatchFieldName(target ?? null, fieldName)]: Number(data.get(`${prefix}-patchNumberValue`)) };
   return { [fieldName]: String(data.get(`${prefix}-patchTextValue`) ?? "") };
+}
+
+function patchFieldsForSlot(slot: TemplateSlotModel) {
+  return uniquePatchFields(slot.acceptedTypes.flatMap((type) => getPatchFields(type)));
+}
+
+function uniquePatchFields(fields: PatchFieldDefinition[]) {
+  const byName = new Map<string, PatchFieldDefinition>();
+  for (const field of fields) {
+    if (!byName.has(field.field)) byName.set(field.field, field);
+  }
+  return [...byName.values()];
+}
+
+function normalizePatchFieldName(target: CharacterNodeModel | null, fieldName: string) {
+  return target?.type === "BAR" && fieldName === "value" ? "current" : fieldName;
 }
 
 function readPrefixedCreatedData(type: NodeType, data: FormData, prefix: string) {

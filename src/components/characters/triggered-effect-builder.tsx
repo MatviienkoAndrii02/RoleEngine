@@ -46,6 +46,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
   const [rows, setRows] = useState<TriggeredActionRow[]>([newTriggeredActionRow()]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
   const [preview, setPreview] = useState<{ condition: string; actions: string[]; warnings: string[] }>(() => ({
@@ -53,6 +54,8 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
     actions: [t("effect.actionsCount", { count: 1 })],
     warnings: [],
   }));
+  const triggerError = validationAttempted && triggerKind === "nodeClick" && !triggerNodeId ? t("effect.inlineTriggerNodeRequired") : undefined;
+  const actionError = validationAttempted && rows.some((row) => actionRequiresTarget(row) && !row.targetNodeId) ? t("effect.inlineTargetRequired") : undefined;
 
   useEffect(() => {
     refreshPreview();
@@ -83,6 +86,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
   }
 
   async function submit(data: FormData) {
+    setValidationAttempted(true);
     setPending(true);
     setError(null);
     const triggerCondition = readEffectCondition(data, "trigger");
@@ -106,14 +110,15 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
     setTriggerKind("condition");
     setTriggerNodeId("");
     setRows([newTriggeredActionRow()]);
+    setValidationAttempted(false);
     setFormKey((current) => current + 1);
     router.refresh();
   }
 
   return (
-    <form key={formKey} ref={formRef} action={submit} className="space-y-4">
+    <form key={formKey} ref={formRef} action={submit} onSubmitCapture={() => setValidationAttempted(true)} onInvalidCapture={() => setValidationAttempted(true)} className="space-y-4">
       <Input name="name" required placeholder={t("effect.name")} />
-      <EffectEditorSection title={t("effect.trigger")} summary={triggerKind === "nodeClick" ? t("effect.triggerNodeClick") : t("effect.triggerCondition")}>
+      <EffectEditorSection title={t("effect.trigger")} summary={triggerKind === "nodeClick" ? t("effect.triggerNodeClick") : t("effect.triggerCondition")} error={triggerError}>
         <select value={triggerKind} onChange={(event) => setTriggerKind(event.target.value as TriggerKind)} className={selectClass}>
           <option value="condition">{t("effect.triggerCondition")}</option>
           <option value="nodeClick">{t("effect.triggerNodeClick")}</option>
@@ -131,7 +136,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
         )}
         <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="trigger" onConditionChange={refreshPreview} />
       </EffectEditorSection>
-      <EffectEditorSection title={t("effect.triggerActions")} summary={t("effect.actionsCount", { count: rows.length })}>
+      <EffectEditorSection title={t("effect.triggerActions")} summary={t("effect.actionsCount", { count: rows.length })} error={actionError}>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">{t("effect.actionsCount", { count: rows.length })}</p>
           <Button type="button" variant="outline" size="sm" onClick={() => setRows((current) => [...current, newTriggeredActionRow()])}>
@@ -154,10 +159,11 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
             rootLabel={templateId ? t("common.rootTemplate") : t("common.rootCharacter")}
             fieldNamespace="action"
             setRows={setRows}
+            showValidationErrors={validationAttempted}
           />
         ))}
       </EffectEditorSection>
-      <EffectPreview condition={preview.condition} actions={preview.actions} warnings={preview.warnings} />
+      <EffectPreview condition={preview.condition} actions={preview.actions} warnings={validationAttempted ? preview.warnings : []} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button disabled={pending}><Plus className="h-4 w-4" />{pending ? t("effect.checking") : t("effect.addTriggeredEffect")}</Button>
     </form>
@@ -169,4 +175,8 @@ function triggeredActionKindLabel(kind: TriggeredActionRow["kind"], t: ReturnTyp
   if (kind === "CREATE_GROUP") return t("effect.createGroup");
   if (kind === "PATCH_NODE_PROPS") return t("effect.patchNode");
   return t("effect.setNumericField");
+}
+
+function actionRequiresTarget(row: TriggeredActionRow) {
+  return row.kind === "NUMERIC" || row.kind === "PATCH_NODE_PROPS";
 }

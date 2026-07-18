@@ -38,6 +38,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   const [sourceKind, setSourceKind] = useState<EditableEffectSourceKind>("node");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
   const [preview, setPreview] = useState<{ condition: string; actions: string[]; warnings: string[] }>(() => ({
@@ -60,6 +61,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   const patchFieldsForSelection = patchSlot ? commonStructuralFields : patchFields;
   const selectedPatchField = patchFieldsForSelection.find((field) => field.field === patchField) ?? patchFieldsForSelection[0] ?? null;
   const actionSummary = structuralActionSummary(operation, nodeSummary(nodes, targetNodeId, slots, rootLabel), t);
+  const targetError = validationAttempted && !targetNodeId ? t("effect.inlineTargetRequired") : undefined;
 
   useEffect(() => {
     refreshPreview();
@@ -107,6 +109,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
   }, [patchField, patchFields, selectedPatchField]);
 
   async function submit(data: FormData) {
+    setValidationAttempted(true);
     setPending(true);
     setError(null);
     const targetValue = String(data.get("targetNodeId") ?? "");
@@ -155,17 +158,18 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
     setPatchField("");
     setPatchMode("static");
     setSourceKind("node");
+    setValidationAttempted(false);
     setFormKey((current) => current + 1);
     router.refresh();
   }
 
   return (
-    <form key={formKey} ref={formRef} action={submit} className="space-y-3">
+    <form key={formKey} ref={formRef} action={submit} onSubmitCapture={() => setValidationAttempted(true)} onInvalidCapture={() => setValidationAttempted(true)} className="space-y-3">
       <Input name="name" required placeholder={t("effect.name")} />
       <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
         <EffectConditionBuilder nodes={nodes} slots={slots} onConditionChange={refreshPreview} />
       </EffectEditorSection>
-      <EffectEditorSection title={t("effect.action")} summary={actionSummary}>
+      <EffectEditorSection title={t("effect.action")} summary={actionSummary} error={targetError}>
         <select value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)} className={selectClass}>
           <option value="CREATE_NODE">{t("effect.createNode")}</option>
           <option value="CREATE_GROUP">{t("effect.createGroup")}</option>
@@ -226,7 +230,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
         </EffectEditorSection>
       )}
 
-      <EffectPreview condition={preview.condition} actions={preview.actions} warnings={preview.warnings} />
+      <EffectPreview condition={preview.condition} actions={preview.actions} warnings={validationAttempted ? preview.warnings : []} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button disabled={pending}>
         <Plus className="h-4 w-4" />

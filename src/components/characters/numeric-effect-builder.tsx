@@ -34,6 +34,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
   const [numericField, setNumericField] = useState("value");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
   const [preview, setPreview] = useState<{ condition: string; actions: string[]; warnings: string[] }>(() => ({
@@ -48,6 +49,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
   const targetFieldsForSelection = targetSlot ? commonNumericFields : targetFields;
   const slotOptions = numericSlots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
   const targetSummary = numericTargetSummary(nodeSummary(numeric, targetNodeId, numericSlots), numericField, operation, sourceKindLabel(sourceKind, t), t);
+  const targetError = validationAttempted && !targetNodeId ? t("effect.inlineTargetRequired") : undefined;
 
   useEffect(() => {
     refreshPreview();
@@ -74,6 +76,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
   }
 
   async function submit(data: FormData) {
+    setValidationAttempted(true);
     setPending(true); setError(null);
     const source = readEditableEffectSource(data, sourceKind);
     const finalCondition = readEffectCondition(data);
@@ -87,17 +90,18 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
     setSourceKind("number");
     setOperation("ADD");
     setNumericField("value");
+    setValidationAttempted(false);
     setFormKey((current) => current + 1);
     router.refresh();
   }
 
   return (
-    <form key={formKey} ref={formRef} action={submit} className="space-y-3">
+    <form key={formKey} ref={formRef} action={submit} onSubmitCapture={() => setValidationAttempted(true)} onInvalidCapture={() => setValidationAttempted(true)} className="space-y-3">
       <Input name="name" required placeholder={t("effect.name")} />
       <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
         <EffectConditionBuilder nodes={numeric} slots={numericSlots} onConditionChange={refreshPreview} />
       </EffectEditorSection>
-      <EffectEditorSection title={t("effect.target")} summary={targetSummary}>
+      <EffectEditorSection title={t("effect.target")} summary={targetSummary} error={targetError}>
         <NodePicker
           name="targetNodeId"
           nodes={numeric}
@@ -118,7 +122,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
       <EffectEditorSection title={t("effect.source")} summary={sourceKindLabel(sourceKind, t)}>
         <EffectSourceEditor kind={sourceKind} onKindChange={setSourceKind} nodes={numeric} slots={numericSlots} />
       </EffectEditorSection>
-      <EffectPreview condition={preview.condition} actions={preview.actions} warnings={preview.warnings} />
+      <EffectPreview condition={preview.condition} actions={preview.actions} warnings={validationAttempted ? preview.warnings : []} />
       {error && <p className="text-sm text-destructive">{error}</p>}<Button disabled={pending}><Plus className="h-4 w-4" />{pending ? t("effect.checking") : t("effect.addEffect")}</Button>
     </form>
   );

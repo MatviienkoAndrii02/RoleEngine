@@ -50,10 +50,11 @@ const structuralOperations: Operation[] = ["CREATE_NODE", "CREATE_GROUP", "PATCH
 const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
 const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
 
-export function EffectManager({ nodes, effects, rootLabel, slots = [] }: { nodes: CharacterNodeModel[]; effects: EffectItem[]; title?: string; rootLabel?: string; slots?: TemplateSlotModel[] }) {
+export function EffectManager({ nodes, archivedNodes = [], effects, rootLabel, slots = [] }: { nodes: CharacterNodeModel[]; archivedNodes?: CharacterNodeModel[]; effects: EffectItem[]; title?: string; rootLabel?: string; slots?: TemplateSlotModel[] }) {
   const { t } = useI18n();
   const router = useRouter();
   const resolvedRootLabel = rootLabel ?? t("common.rootCharacter");
+  const referenceLabels = useMemo(() => buildReferenceLabels(nodes, archivedNodes, t), [nodes, archivedNodes, t]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -96,6 +97,7 @@ export function EffectManager({ nodes, effects, rootLabel, slots = [] }: { nodes
         {effects.map((effect) => {
           const diagnostic = diagnoseEffectReferences(effect, nodes);
           const broken = diagnostic.missingNodeIds.length > 0 || diagnostic.missingPaths.length > 0;
+          const missingRefs = [...diagnostic.missingNodeIds, ...diagnostic.missingPaths].map((ref) => formatReference(ref, referenceLabels, t)).join(", ");
           return (
             <div key={effect.id} className="rounded-md border p-3">
               <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
@@ -115,7 +117,7 @@ export function EffectManager({ nodes, effects, rootLabel, slots = [] }: { nodes
                   {broken && (
                     <p className="mt-1 flex items-start gap-1 text-xs text-destructive">
                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      {t("effect.missingRefs", { refs: [...diagnostic.missingNodeIds, ...diagnostic.missingPaths].join(", ") })}
+                      {t("effect.missingRefs", { refs: missingRefs })}
                     </p>
                   )}
                 </div>
@@ -156,6 +158,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
 }) {
   const { t } = useI18n();
   const formRef = useRef<HTMLFormElement>(null);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const initialOperation = effect.operation;
   const [operation, setOperation] = useState<Operation>(initialOperation);
   const [sourceKind, setSourceKind] = useState(initialSourceKind(effect.source));
@@ -189,6 +192,9 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   const [patchField, setPatchField] = useState(initialPatchField(effect, patchFields));
   const selectedPatchField = patchFields.find((field) => field.field === patchField) ?? patchFields[0] ?? null;
   const actualSelectedTargetId = selectedTargetId || (effect.target.kind === "root" ? "__ROOT__" : "");
+  const definitionError = validationAttempted && effect.operation !== "TRIGGERED" && !actualSelectedTargetId ? t("effect.inlineTargetRequired") : undefined;
+  const triggerError = validationAttempted && effect.operation === "TRIGGERED" && triggerKind === "nodeClick" && !triggerNodeId ? t("effect.inlineTriggerNodeRequired") : undefined;
+  const actionError = validationAttempted && effect.operation === "TRIGGERED" && triggerRows.some((row) => actionRequiresTarget(row) && !row.targetNodeId) ? t("effect.inlineTargetRequired") : undefined;
 
   useEffect(() => {
     if (!numericFields.length) {
@@ -221,6 +227,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   }
 
   function submit(formData: FormData) {
+    setValidationAttempted(true);
     if (effect.operation === "TRIGGERED") {
       const triggerConditionValue = readEffectCondition(formData, "triggerEdit", triggerCondition);
       onSave({
@@ -263,7 +270,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   }
 
   return (
-    <form ref={formRef} action={submit} className="space-y-4 border-t pt-4">
+    <form ref={formRef} action={submit} onSubmitCapture={() => setValidationAttempted(true)} onInvalidCapture={() => setValidationAttempted(true)} className="space-y-4 border-t pt-4">
       <div className="flex items-center justify-between gap-3"><h3 className="font-medium">{t("effect.edit")}</h3><Button type="button" size="icon" variant="ghost" onClick={onCancel} aria-label={t("effect.closeEditor")}><X className="h-4 w-4" /></Button></div>
       <EffectEditorSection title={t("effect.basics")} summary={effect.name}>
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_88px]">
@@ -279,7 +286,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
       )}
       {effect.operation === "TRIGGERED" ? (
         <>
-        <EffectEditorSection title={t("effect.trigger")} summary={triggerPreview}>
+        <EffectEditorSection title={t("effect.trigger")} summary={triggerPreview} error={triggerError}>
           <select value={triggerKind} onChange={(event) => { setTriggerKind(event.target.value as TriggerKind); window.setTimeout(refreshConditionPreview, 0); }} className={selectClass}>
             <option value="condition">{t("effect.triggerCondition")}</option>
             <option value="nodeClick">{t("effect.triggerNodeClick")}</option>
@@ -296,7 +303,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
           )}
           <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="triggerEdit" condition={triggerCondition} allowCurrent onConditionChange={refreshConditionPreview} />
         </EffectEditorSection>
-        <EffectEditorSection title={t("effect.triggerActions")} summary={triggeredActionsSummary(triggeredPayload?.actions ?? [], triggerRows.length, nodes, slots, t, rootLabel)}>
+        <EffectEditorSection title={t("effect.triggerActions")} summary={triggeredActionsSummary(triggeredPayload?.actions ?? [], triggerRows.length, nodes, slots, t, rootLabel)} error={actionError}>
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">{t("effect.actionsCount", { count: triggerRows.length })}</p>
             <Button type="button" variant="outline" size="sm" onClick={() => setTriggerRows((current) => [...current, newTriggeredActionRow()])}>
@@ -321,12 +328,13 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
               originalAction={triggeredPayload?.actions[index]}
               setRows={setTriggerRows}
               defaultOpen={index === 0}
+              showValidationErrors={validationAttempted}
             />
           ))}
         </EffectEditorSection>
         </>
       ) : (
-        <EffectEditorSection title={t("effect.definition")} summary={definitionSummary(effect, operation, selectedTargetId, nodes, slots, rootLabel, t)}>
+        <EffectEditorSection title={t("effect.definition")} summary={definitionSummary(effect, operation, selectedTargetId, nodes, slots, rootLabel, t)} error={definitionError}>
           <Labeled label={t("effect.operation")}>
             <select
               value={operation}
@@ -587,6 +595,9 @@ function triggeredActionsSummary(actions: TriggeredEffectAction[], rowCount: num
   const suffix = actions.length > 1 ? ` +${actions.length - 1}` : "";
   return `${triggeredActionSummary(first, nodes, slots, t, rootLabel)}${suffix}`;
 }
+function actionRequiresTarget(row: TriggeredActionRow) {
+  return row.kind === "NUMERIC" || row.kind === "PATCH_NODE_PROPS";
+}
 function definitionSummary(effect: EffectDefinition, operation: Operation, selectedTargetId: string, nodes: CharacterNodeModel[], slots: TemplateSlotModel[], rootLabel: string, t: ReturnType<typeof useI18n>["t"]) {
   const target = selectedTargetId ? nodeSummary(nodes, selectedTargetId, slots, rootLabel) : targetSummary(effect, nodes, slots, rootLabel);
   return `${operationLabel(operation, t)}: ${target}`;
@@ -622,6 +633,21 @@ const commonStructuralFields: PatchFieldDefinition[] = [
   { field: "icon", labelKey: "icons.label", kind: "text", derived: false },
   { field: "accentColor", labelKey: "node.accentColor", kind: "text", derived: false },
 ];
+
+function buildReferenceLabels(nodes: CharacterNodeModel[], archivedNodes: CharacterNodeModel[], t: ReturnType<typeof useI18n>["t"]) {
+  const labels = new Map<string, string>();
+  for (const node of nodes) labels.set(node.id, node.name);
+  for (const node of archivedNodes) labels.set(node.id, t("problems.archivedReference", { name: node.name, id: shortReferenceId(node.id) }));
+  return labels;
+}
+
+function formatReference(ref: string, labels: Map<string, string>, t: ReturnType<typeof useI18n>["t"]) {
+  return labels.get(ref) ?? t("problems.unknownReference", { id: shortReferenceId(ref) });
+}
+
+function shortReferenceId(id: string) {
+  return id.length > 10 ? `${id.slice(0, 6)}...${id.slice(-4)}` : id;
+}
 
 function parseTemplateSelectValue(value: string) {
   return value.startsWith("slot:")

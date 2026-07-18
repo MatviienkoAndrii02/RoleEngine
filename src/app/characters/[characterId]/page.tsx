@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { diagnoseEffectReferences } from "@/domain/effects";
 import { buildNodeTree, type CharacterNodeModel } from "@/domain/nodes";
 import { removePlayerHiddenSubtrees } from "@/domain/node-visibility";
 import { parseAcceptedNodeTypes } from "@/domain/template-slots";
@@ -12,6 +13,7 @@ import { EffectManager } from "@/components/characters/effect-manager";
 import { CharacterSettings } from "@/components/characters/character-settings";
 import { SidebarSection } from "@/components/characters/sidebar-section";
 import { DependencyPanel } from "@/components/characters/dependency-panel";
+import { ProblemsPanel, type ProblemItem } from "@/components/characters/problems-panel";
 import { NodeArchive, type ArchivedNodeItem } from "@/components/characters/node-archive";
 import { AuditList } from "@/components/history/audit-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -148,6 +150,14 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
   const parsedArchivedNodes = parseCharacterNodeModels(archivedNodeRecords);
   diagnostics = [...diagnostics, ...parsedArchivedNodes.diagnostics];
   const archivedItems = buildArchivedNodeItems(parsedArchivedNodes.nodes);
+  const problems = buildCharacterProblems({
+    cycles: engineResult.cycles,
+    diagnostics: canEdit ? diagnostics : [],
+    effects: canEdit ? effects : [],
+    nodes,
+    archivedNodes: parsedArchivedNodes.nodes,
+    t,
+  });
 
   return (
     <div className="space-y-6">
@@ -159,19 +169,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
         </div>
       </div>
 
-      {engineResult.cycles.length > 0 && (
-        <div className="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
-          {t("character.cycles")}
-        </div>
-      )}
-      {diagnostics.length > 0 && canEdit && (
-        <PersistedJsonDiagnostics
-          diagnostics={diagnostics}
-          title={t("diagnostics.persistedJsonTitle")}
-          recordLabel={(name, field) => t("diagnostics.persistedJsonRecord", { name, field })}
-          moreLabel={t("diagnostics.moreInvalid", { count: diagnostics.length - Math.min(diagnostics.length, 5) })}
-        />
-      )}
+      <ProblemsPanel problems={problems} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card>
@@ -209,7 +207,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
           )}
           {canEdit && (
             <SidebarSection id="effect-manager" title={t("character.allEffects")} count={effects.length}>
-              <EffectManager nodes={nodes} effects={effects} />
+              <EffectManager nodes={nodes} archivedNodes={parsedArchivedNodes.nodes} effects={effects} />
             </SidebarSection>
           )}
           {canEdit && (
@@ -246,31 +244,73 @@ function buildArchivedNodeItems(nodes: CharacterNodeModel[]): ArchivedNodeItem[]
     }));
 }
 
-function PersistedJsonDiagnostics({
+function buildCharacterProblems({
+  cycles,
   diagnostics,
-  title,
-  recordLabel,
-  moreLabel,
+  effects,
+  nodes,
+  archivedNodes,
+  t,
 }: {
+  cycles: string[][];
   diagnostics: PersistedJsonDiagnostic[];
-  title: string;
-  recordLabel: (name: string, field: string) => string;
-  moreLabel: string;
+  effects: Array<ReturnType<typeof parseEffectDefinitions>["effects"][number]>;
+  nodes: CharacterNodeModel[];
+  archivedNodes: CharacterNodeModel[];
+  t: Awaited<ReturnType<typeof getTranslator>>["t"];
 }) {
-  const shown = diagnostics.slice(0, 5);
-  return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-      <div className="font-medium">{title}</div>
-      <ul className="mt-2 list-disc space-y-1 pl-5">
-        {shown.map((diagnostic) => (
-          <li key={`${diagnostic.entityType}-${diagnostic.entityId}`}>
-            {recordLabel(diagnostic.entityName, diagnostic.field)}
-          </li>
-        ))}
-      </ul>
-      {diagnostics.length > shown.length && (
-        <p className="mt-2">{moreLabel}</p>
-      )}
-    </div>
-  );
+  const problems: ProblemItem[] = [];
+  const referenceLabels = buildReferenceLabels(nodes, archivedNodes, t);
+
+  if (cycles.length > 0) {
+    problems.push({
+      id: "dependency-cycles",
+      severity: "error",
+      title: t("problems.dependencyCyclesTitle"),
+      description: t("character.cycles"),
+      details: cycles.slice(0, 5).map((cycle) => cycle.map((id) => formatReference(id, referenceLabels, t)).join(" -> ")),
+    });
+  }
+
+  for (const effect of effects) {
+    const diagnostic = diagnoseEffectReferences(effect, nodes);
+    const refs = [...diagnostic.missingNodeIds, ...diagnostic.missingPaths];
+    if (refs.length === 0) continue;
+    problems.push({
+      id: `effect-${effect.id}`,
+      severity: "warning",
+      title: t("problems.brokenEffectTitle", { name: effect.name }),
+      description: t("effect.missingRefs", { refs: refs.map((ref) => formatReference(ref, referenceLabels, t)).join(", ") }),
+    });
+  }
+
+  for (const diagnostic of diagnostics) {
+    problems.push({
+      id: `json-${diagnostic.entityType}-${diagnostic.entityId}-${diagnostic.field}`,
+      severity: "warning",
+      title: t("problems.invalidJsonTitle", { name: diagnostic.entityName }),
+      description: t("problems.invalidJsonBody", {
+        entity: t(`problems.entity.${diagnostic.entityType}`),
+        field: diagnostic.field,
+      }),
+      details: diagnostic.issues.slice(0, 3),
+    });
+  }
+
+  return problems;
+}
+
+function buildReferenceLabels(nodes: CharacterNodeModel[], archivedNodes: CharacterNodeModel[], t: Awaited<ReturnType<typeof getTranslator>>["t"]) {
+  const labels = new Map<string, string>();
+  for (const node of nodes) labels.set(node.id, node.name);
+  for (const node of archivedNodes) labels.set(node.id, t("problems.archivedReference", { name: node.name, id: shortReferenceId(node.id) }));
+  return labels;
+}
+
+function formatReference(ref: string, labels: Map<string, string>, t: Awaited<ReturnType<typeof getTranslator>>["t"]) {
+  return labels.get(ref) ?? t("problems.unknownReference", { id: shortReferenceId(ref) });
+}
+
+function shortReferenceId(id: string) {
+  return id.length > 10 ? `${id.slice(0, 6)}...${id.slice(-4)}` : id;
 }
