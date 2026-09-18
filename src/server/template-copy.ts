@@ -1,5 +1,6 @@
 import type { NodeType, Prisma, TemplateNode, TemplateSlot } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { appError } from "@/server/errors";
 
 type NodeIdMap = Map<string, string>;
 type SlotBindingMap = Map<string, string>;
@@ -23,10 +24,12 @@ export async function copyTemplateIntoCharacter(input: {
   if (!template) throw new Error("Template not found");
 
   const idMap: NodeIdMap = new Map();
+  const referencedSlotIds = collectReferencedTemplateSlotIds(template.effects.flatMap((effect) => [effect.condition, effect.target, effect.source, effect.payload]));
   const slotBindings = await validateTemplateSlotBindings({
     characterId: input.characterId,
     slots: template.slots,
     bindings: input.bindings ?? {},
+    referencedSlotIds,
     db,
   });
   const nodesByParent = groupByParent(template.nodes);
@@ -197,6 +200,7 @@ async function validateTemplateSlotBindings(input: {
   characterId: string;
   slots: TemplateSlot[];
   bindings: Record<string, string>;
+  referencedSlotIds: ReadonlySet<string>;
   db: DbClient;
 }): Promise<SlotBindingMap> {
   const result = new Map<string, string>();
@@ -224,10 +228,34 @@ async function validateTemplateSlotBindings(input: {
   }
 
   for (const slot of input.slots) {
-    if (slot.required && !result.has(slot.id)) throw new Error("Required template slot binding is missing");
+    if (slot.required && input.referencedSlotIds.has(slot.id) && !result.has(slot.id)) {
+      throw appError("TEMPLATE_BINDING_REQUIRED", "Required template slot binding is missing");
+    }
   }
 
   return result;
+}
+
+export function collectReferencedTemplateSlotIds(values: unknown[]): Set<string> {
+  const result = new Set<string>();
+  for (const value of values) collectReferencedTemplateSlotIdsFromValue(value, result);
+  return result;
+}
+
+function collectReferencedTemplateSlotIdsFromValue(value: unknown, result: Set<string>) {
+  if (Array.isArray(value)) {
+    for (const item of value) collectReferencedTemplateSlotIdsFromValue(item, result);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  const record = value as Record<string, unknown>;
+  if (
+    (record.kind === "templateSlot" || record.kind === "slotRef" || record.kind === "slotExists" || record.kind === "compareSlot")
+    && typeof record.slotId === "string"
+  ) {
+    result.add(record.slotId);
+  }
+  for (const item of Object.values(record)) collectReferencedTemplateSlotIdsFromValue(item, result);
 }
 
 function readAcceptedTypes(value: Prisma.JsonValue): NodeType[] {
