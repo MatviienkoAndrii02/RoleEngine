@@ -300,9 +300,9 @@ export async function updateCharacterNode(input: {
   name?: string;
   parentId?: string | null;
   data?: unknown;
-}) {
-  const actor = await requireGM();
-  const { character } = await requireCharacterGM(input.characterId);
+}, sessionOverride?: Parameters<typeof requireGM>[0]) {
+  const actor = await requireGM(sessionOverride);
+  const { character } = await requireCharacterGM(input.characterId, {}, sessionOverride);
   const current = await prisma.characterNode.findFirstOrThrow({
     where: { id: input.nodeId, characterId: input.characterId, archivedAt: null }
   });
@@ -365,9 +365,9 @@ export async function updateCharacterNode(input: {
   return node;
 }
 
-export async function deleteCharacterNode(input: { characterId: string; nodeId: string }) {
-  const actor = await requireGM();
-  const { character } = await requireCharacterGM(input.characterId);
+export async function deleteCharacterNode(input: { characterId: string; nodeId: string }, sessionOverride?: Parameters<typeof requireGM>[0]) {
+  const actor = await requireGM(sessionOverride);
+  const { character } = await requireCharacterGM(input.characterId, {}, sessionOverride);
   const current = await prisma.characterNode.findFirstOrThrow({
     where: { id: input.nodeId, characterId: input.characterId, archivedAt: null }
   });

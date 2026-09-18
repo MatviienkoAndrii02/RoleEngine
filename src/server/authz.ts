@@ -7,14 +7,16 @@ import type { WorkspaceRole } from "@prisma/client";
 const writableWorkspaceRoles: WorkspaceRole[] = ["OWNER", "GM"];
 export const ACTIVE_WORKSPACE_COOKIE = "role-engine-workspace";
 
-export async function requireUser() {
-  const session = await auth();
+type SessionLike = { user?: { id: string } | null } | null;
+
+export async function requireUser(sessionOverride?: SessionLike): Promise<{ id: string }> {
+  const session = sessionOverride ?? (await auth());
   if (!session?.user?.id) throw unauthorized();
-  return session.user;
+  return { id: session.user.id };
 }
 
-export async function requireGM() {
-  return requireUser();
+export async function requireGM(sessionOverride?: SessionLike): Promise<{ id: string }> {
+  return requireUser(sessionOverride);
 }
 
 export async function getWritableWorkspaceIds(userId: string) {
@@ -95,14 +97,14 @@ export async function requirePrimaryWritableWorkspace(userId: string) {
   return workspace.id;
 }
 
-export async function requireWorkspaceRole(workspaceId: string, roles: WorkspaceRole[]) {
-  const user = await requireUser();
+export async function requireWorkspaceRole(workspaceId: string, roles: WorkspaceRole[], sessionOverride?: SessionLike) {
+  const user = await requireUser(sessionOverride);
   const membership = await assertUserHasWorkspaceRole(user.id, workspaceId, roles);
   return { user, membership };
 }
 
-export async function requireCharacterGM(characterId: string, options: { archived?: "active" | "archived" | "any" } = {}) {
-  const user = await requireUser();
+export async function requireCharacterGM(characterId: string, options: { archived?: "active" | "archived" | "any" } = {}, sessionOverride?: SessionLike) {
+  const user = await requireUser(sessionOverride);
   const archived = options.archived ?? "active";
   const character = await prisma.character.findUnique({
     where: { id: characterId },
@@ -118,8 +120,8 @@ export async function requireCharacterGM(characterId: string, options: { archive
   return { user, character };
 }
 
-export async function requireTemplateGM(templateId: string, options: { archived?: "active" | "archived" | "any" } = {}) {
-  const user = await requireUser();
+export async function requireTemplateGM(templateId: string, options: { archived?: "active" | "archived" | "any" } = {}, sessionOverride?: SessionLike) {
+  const user = await requireUser(sessionOverride);
   const archived = options.archived ?? "active";
   const template = await prisma.entityTemplate.findUnique({
     where: { id: templateId },
