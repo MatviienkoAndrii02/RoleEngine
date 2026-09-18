@@ -7,10 +7,10 @@ import type { TemplateSlotModel } from "@/domain/template-slots";
 import { getNumericPatchFields, type PatchFieldDefinition } from "@/domain/node-patches";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
+import { EffectConditionBuilder, readEffectCondition, validateEffectCondition } from "@/components/characters/effect-condition-builder";
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
 import { EffectPreview } from "@/components/characters/effect-preview";
-import { EffectSourceEditor, readEditableEffectSource, sourceKindLabel, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
+import { EffectSourceEditor, readEditableEffectSource, sourceKindLabel, validateEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
 import { conditionExpressionSummary, fieldLabel, nodeSummary, numericEffectSummary, sourceSummary } from "@/components/characters/effect-summary";
 import { NodePicker } from "@/components/characters/node-picker";
 import { clearFormDraft, stringDraftValue, useFormDraft } from "@/components/forms/use-form-draft";
@@ -92,9 +92,14 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
 
   async function submit(data: FormData) {
     setValidationAttempted(true);
-    setPending(true); setError(null);
+    setError(null);
     const source = readEditableEffectSource(data, sourceKind);
     const finalCondition = readEffectCondition(data);
+    if ([...validateEditableEffectSource(source, t), ...validateEffectCondition(finalCondition, t)].length > 0) {
+      setError(t("effect.fixValidationErrors"));
+      return;
+    }
+    setPending(true);
     const response = await trackImpact(characterId, t("impact.effectCreated"), () =>
       fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: data.get("name"), operation: data.get("operation"), targetNodeId: data.get("targetNodeId"), numericField: data.get("numericField"), source, condition: finalCondition }) })
     );
@@ -125,7 +130,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
       )}
       <Input name="name" required placeholder={t("effect.name")} />
       <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
-        <EffectConditionBuilder nodes={numeric} slots={numericSlots} onConditionChange={refreshPreview} />
+        <EffectConditionBuilder nodes={numeric} slots={numericSlots} onConditionChange={refreshPreview} showValidationErrors={validationAttempted} />
       </EffectEditorSection>
       <EffectEditorSection title={t("effect.target")} summary={targetSummary} error={targetError}>
         <NodePicker
@@ -146,7 +151,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
         </div>
       </EffectEditorSection>
       <EffectEditorSection title={t("effect.source")} summary={sourceKindLabel(sourceKind, t)}>
-        <EffectSourceEditor kind={sourceKind} onKindChange={setSourceKind} nodes={numeric} slots={numericSlots} />
+        <EffectSourceEditor kind={sourceKind} onKindChange={setSourceKind} nodes={numeric} slots={numericSlots} showValidationErrors={validationAttempted} />
       </EffectEditorSection>
       <EffectPreview condition={preview.condition} actions={preview.actions} warnings={validationAttempted ? preview.warnings : []} />
       {error && <p className="text-sm text-destructive">{error}</p>}<Button disabled={pending}><Plus className="h-4 w-4" />{pending ? t("effect.checking") : t("effect.addEffect")}</Button>

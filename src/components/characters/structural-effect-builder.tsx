@@ -9,10 +9,10 @@ import { getStructuralPatchFields, type PatchFieldDefinition } from "@/domain/no
 import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
+import { EffectConditionBuilder, readEffectCondition, validateEffectCondition } from "@/components/characters/effect-condition-builder";
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
 import { EffectPreview } from "@/components/characters/effect-preview";
-import { EffectSourceEditor, readEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
+import { EffectSourceEditor, readEditableEffectSource, validateEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
 import { conditionExpressionSummary, fieldLabel, nodeSummary, sourceSummary } from "@/components/characters/effect-summary";
 import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
 import { NodeIconPicker } from "@/components/characters/node-icons";
@@ -127,11 +127,18 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
 
   async function submit(data: FormData) {
     setValidationAttempted(true);
-    setPending(true);
     setError(null);
     const targetValue = String(data.get("targetNodeId") ?? "");
     const targetNodeIdValue = targetValue === "__ROOT__" ? null : targetValue;
     const condition = readEffectCondition(data);
+    const sourceValidation = operation === "PATCH_NODE_PROPS" && selectedPatchField && patchMode === "source"
+      ? validateEditableEffectSource(readSource(sourceKind, data), t)
+      : [];
+    if ([...validateEffectCondition(condition, t), ...sourceValidation].length > 0) {
+      setError(t("effect.fixValidationErrors"));
+      return;
+    }
+    setPending(true);
     const createType = operation === "CREATE_GROUP" ? "GROUP" : nodeType;
     const base = { name: data.get("name"), operation, targetNodeId: targetNodeIdValue, condition };
 
@@ -195,7 +202,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
       )}
       <Input name="name" required placeholder={t("effect.name")} />
       <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
-        <EffectConditionBuilder nodes={nodes} slots={slots} onConditionChange={refreshPreview} />
+        <EffectConditionBuilder nodes={nodes} slots={slots} onConditionChange={refreshPreview} showValidationErrors={validationAttempted} />
       </EffectEditorSection>
       <EffectEditorSection title={t("effect.action")} summary={actionSummary} error={targetError}>
         <select name="operation" value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)} className={selectClass}>
@@ -254,6 +261,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
             numericNodes={nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR")}
             numericSlots={slots.filter((slot) => slot.acceptedTypes.some((type) => type === "NUMBER" || type === "BAR"))}
             targetType={patchTarget?.type}
+            showValidationErrors={validationAttempted}
           />
         </EffectEditorSection>
       )}
@@ -280,6 +288,7 @@ function PatchControls({
   numericNodes,
   numericSlots,
   targetType,
+  showValidationErrors,
 }: {
   fields: PatchFieldDefinition[];
   selectedField: PatchFieldDefinition | null;
@@ -292,6 +301,7 @@ function PatchControls({
   numericNodes: CharacterNodeModel[];
   numericSlots: TemplateSlotModel[];
   targetType?: NodeType;
+  showValidationErrors: boolean;
 }) {
   const { t } = useI18n();
   if (!selectedField) return <p className="text-sm text-muted-foreground">{t("effect.selectPatchTargetFirst")}</p>;
@@ -308,7 +318,7 @@ function PatchControls({
         </select>
       )}
       {mode === "source" && selectedField.derived
-        ? <EffectSourceEditor kind={sourceKind} onKindChange={onSourceKindChange} nodes={numericNodes} slots={numericSlots} />
+        ? <EffectSourceEditor kind={sourceKind} onKindChange={onSourceKindChange} nodes={numericNodes} slots={numericSlots} showValidationErrors={showValidationErrors} />
         : <StaticPatchField field={selectedField} targetType={targetType} />}
     </div>
   );

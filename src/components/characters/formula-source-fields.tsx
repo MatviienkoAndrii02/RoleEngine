@@ -22,26 +22,30 @@ export function FormulaSourceFields({
   slots = [],
   prefix = "formula",
   defaultExpression,
+  showValidationErrors = false,
 }: {
   nodes: CharacterNodeModel[];
   slots?: TemplateSlotModel[];
   prefix?: string;
   defaultExpression?: FormulaExpression | null;
+  showValidationErrors?: boolean;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [expression, setExpression] = useState<FormulaExpression>(() => defaultExpression ?? defaultFormula());
   const slotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
   const summary = useMemo(() => formulaSummary(expression, nodes, slots, t), [expression, nodes, slots, t]);
+  const validationErrors = showValidationErrors ? validateFormulaExpression(expression, t) : [];
 
   return (
     <div className="space-y-2">
       <input type="hidden" name={`${prefix}Json`} value={JSON.stringify(expression)} />
-      <div className="rounded-md border bg-muted/20 p-3">
+      <div className={`rounded-md border bg-muted/20 p-3 ${validationErrors.length ? "border-destructive" : ""}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-xs font-medium uppercase text-muted-foreground">{t("effect.sourceFormula")}</div>
             <div className="mt-1 line-clamp-2 break-words text-sm">{summary}</div>
+            {validationErrors.length > 0 && <ValidationMessage message={validationErrors[0]} />}
           </div>
           <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setOpen(true)}>
             {t("effect.editFormula")}
@@ -66,6 +70,7 @@ export function FormulaSourceFields({
                 slots={slots}
                 slotOptions={slotOptions}
                 onChange={setExpression}
+                showValidationErrors={showValidationErrors}
               />
             </div>
             <div className="flex justify-between gap-2 border-t p-4">
@@ -96,12 +101,26 @@ export function readFormulaExpression(data: FormData, prefix = "formula"): Formu
   };
 }
 
+export function validateFormulaExpression(expression: FormulaExpression, t: ReturnType<typeof useI18n>["t"]): string[] {
+  if (expression.kind === "const") return Number.isFinite(expression.value) ? [] : [t("effect.inlineNumberRequired")];
+  if (expression.kind === "ref") return expression.nodeId ? [] : [t("effect.inlineSourceNodeRequired")];
+  if (expression.kind === "slotRef") return expression.slotId ? [] : [t("effect.inlineSourceNodeRequired")];
+  if (isBinaryFormula(expression)) {
+    return [
+      ...validateFormulaExpression(expression.left, t),
+      ...validateFormulaExpression(expression.right, t),
+    ];
+  }
+  return [];
+}
+
 function FormulaExpressionEditor({
   expression,
   nodes,
   slots,
   slotOptions,
   onChange,
+  showValidationErrors,
   depth = 0,
 }: {
   expression: FormulaExpression;
@@ -109,6 +128,7 @@ function FormulaExpressionEditor({
   slots: TemplateSlotModel[];
   slotOptions: Array<{ value: string; label: string }>;
   onChange: (expression: FormulaExpression) => void;
+  showValidationErrors: boolean;
   depth?: number;
 }) {
   const { t } = useI18n();
@@ -126,15 +146,16 @@ function FormulaExpressionEditor({
           </Button>
         </div>
         <div className="space-y-2 border-l-2 border-primary/30 pl-3">
-          <FormulaExpressionEditor expression={expression.left} nodes={nodes} slots={slots} slotOptions={slotOptions} depth={depth + 1} onChange={(left) => onChange({ ...expression, left })} />
-          <FormulaExpressionEditor expression={expression.right} nodes={nodes} slots={slots} slotOptions={slotOptions} depth={depth + 1} onChange={(right) => onChange({ ...expression, right })} />
+          <FormulaExpressionEditor expression={expression.left} nodes={nodes} slots={slots} slotOptions={slotOptions} depth={depth + 1} onChange={(left) => onChange({ ...expression, left })} showValidationErrors={showValidationErrors} />
+          <FormulaExpressionEditor expression={expression.right} nodes={nodes} slots={slots} slotOptions={slotOptions} depth={depth + 1} onChange={(right) => onChange({ ...expression, right })} showValidationErrors={showValidationErrors} />
         </div>
       </div>
     );
   }
 
+  const error = showValidationErrors ? validateFormulaExpression(expression, t)[0] : undefined;
   return (
-    <div className="space-y-2 rounded-md border bg-background p-3" style={{ marginLeft: depth ? 12 : 0 }}>
+    <div className={`space-y-2 rounded-md border bg-background p-3 ${error ? "border-destructive" : ""}`} style={{ marginLeft: depth ? 12 : 0 }}>
       <div className="flex flex-wrap items-center gap-2">
         <select value={kind} onChange={(event) => onChange(convertOperandKind(expression, event.target.value))} className={selectClass}>
           <option value="number">{t("effect.number")}</option>
@@ -168,6 +189,7 @@ function FormulaExpressionEditor({
           </select>
         </div>
       )}
+      {error && <ValidationMessage message={error} />}
     </div>
   );
 }
@@ -265,4 +287,8 @@ function fieldLabel(field: NumericField, t: ReturnType<typeof useI18n>["t"]) {
 
 function isNumericField(value: unknown): value is NumericField {
   return value === "value" || value === "current" || value === "min" || value === "max";
+}
+
+function ValidationMessage({ message }: { message: string }) {
+  return <p className="mt-1 text-xs text-destructive">{message}</p>;
 }

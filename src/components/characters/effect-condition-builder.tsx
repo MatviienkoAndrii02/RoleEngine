@@ -19,6 +19,7 @@ export function EffectConditionBuilder({
   condition,
   allowCurrent = false,
   onConditionChange,
+  showValidationErrors = false,
 }: {
   nodes: CharacterNodeModel[];
   slots?: TemplateSlotModel[];
@@ -26,12 +27,14 @@ export function EffectConditionBuilder({
   condition?: EffectCondition;
   allowCurrent?: boolean;
   onConditionChange?: () => void;
+  showValidationErrors?: boolean;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<EffectCondition>(() => condition ?? { kind: "always" });
   const slotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
   const summary = useMemo(() => conditionExpressionSummary(draft, nodes, slots, t), [draft, nodes, slots, t]);
+  const validationErrors = showValidationErrors ? validateEffectCondition(draft, t) : [];
 
   useEffect(() => {
     notifyConditionChange(onConditionChange);
@@ -40,11 +43,12 @@ export function EffectConditionBuilder({
   return (
     <div className="space-y-2">
       <input type="hidden" name={`${prefix}Json`} value={JSON.stringify(draft)} />
-      <div className="rounded-md border bg-muted/20 p-3">
+      <div className={`rounded-md border bg-muted/20 p-3 ${validationErrors.length ? "border-destructive" : ""}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-xs font-medium uppercase text-muted-foreground">{t("effect.condition")}</div>
             <div className="mt-1 line-clamp-2 break-words text-sm">{summary}</div>
+            {validationErrors.length > 0 && <ValidationMessage message={validationErrors[0]} />}
           </div>
           <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setOpen(true)}>
             {t("effect.editCondition")}
@@ -69,6 +73,7 @@ export function EffectConditionBuilder({
                 slotOptions={slotOptions}
                 slots={slots}
                 onChange={setDraft}
+                showValidationErrors={showValidationErrors}
               />
             </div>
             <div className="flex justify-between gap-2 border-t p-4">
@@ -100,6 +105,30 @@ export function readEffectCondition(data: FormData, prefix = "condition", curren
     return { kind: join, conditions: [first, readConditionLeaf(data, `${prefix}Second`)] };
   }
   return first;
+}
+
+export function validateEffectCondition(condition: EffectCondition, t: ReturnType<typeof useI18n>["t"]): string[] {
+  if (condition.kind === "always") return [];
+  if (condition.kind === "fieldExists") return condition.nodeId ? [] : [t("effect.inlineNodeRequired")];
+  if (condition.kind === "slotExists") return condition.slotId ? [] : [t("effect.inlineNodeRequired")];
+  if (condition.kind === "compare") {
+    return [
+      ...(condition.nodeId ? [] : [t("effect.inlineNodeRequired")]),
+      ...validateEffectSourceReference(condition.value, t),
+    ];
+  }
+  if (condition.kind === "compareSlot") {
+    return [
+      ...(condition.slotId ? [] : [t("effect.inlineNodeRequired")]),
+      ...validateEffectSourceReference(condition.value, t),
+    ];
+  }
+  if (condition.kind === "not") return validateEffectCondition(condition.condition, t);
+  if (condition.kind === "and" || condition.kind === "or") {
+    if (!condition.conditions.length) return [t("effect.inlineConditionRequired")];
+    return condition.conditions.flatMap((child) => validateEffectCondition(child, t));
+  }
+  return [];
 }
 
 function ConditionKind({ name, value, onChange }: { name?: string; value: string; onChange: (value: string) => void }) {
@@ -396,6 +425,7 @@ function RecursiveConditionEditor({
   slotOptions,
   slots,
   onChange,
+  showValidationErrors,
   depth = 0,
 }: {
   condition: EffectCondition;
@@ -403,6 +433,7 @@ function RecursiveConditionEditor({
   slotOptions: Array<{ value: string; label: string }>;
   slots: TemplateSlotModel[];
   onChange: (condition: EffectCondition) => void;
+  showValidationErrors: boolean;
   depth?: number;
 }) {
   const { t } = useI18n();
@@ -432,6 +463,7 @@ function RecursiveConditionEditor({
                 slots={slots}
                 depth={depth + 1}
                 onChange={(next) => onChange(replaceConditionChild(condition, index, next))}
+                showValidationErrors={showValidationErrors}
               />
               {(condition.kind === "and" || condition.kind === "or") && condition.conditions.length > 1 && (
                 <Button type="button" variant="ghost" size="sm" onClick={() => onChange(removeConditionChild(condition, index))}>
@@ -463,7 +495,7 @@ function RecursiveConditionEditor({
           {t("effect.wrapCondition")}
         </Button>
       </div>
-      <ConditionLeafFields condition={condition} nodes={nodes} slotOptions={slotOptions} slots={slots} onChange={onChange} />
+      <ConditionLeafFields condition={condition} nodes={nodes} slotOptions={slotOptions} slots={slots} onChange={onChange} showValidationErrors={showValidationErrors} />
     </div>
   );
 }
@@ -474,16 +506,20 @@ function ConditionLeafFields({
   slotOptions,
   slots,
   onChange,
+  showValidationErrors,
 }: {
   condition: EffectCondition;
   nodes: CharacterNodeModel[];
   slotOptions: Array<{ value: string; label: string }>;
   slots: TemplateSlotModel[];
   onChange: (condition: EffectCondition) => void;
+  showValidationErrors: boolean;
 }) {
   const { t } = useI18n();
   const kind = conditionKind(condition);
   const valueKind = conditionValueKind(condition);
+  const targetError = showValidationErrors && kind !== "always" && !conditionNodeValue(condition) ? t("effect.inlineNodeRequired") : undefined;
+  const sourceError = showValidationErrors && kind !== "exists" ? firstSourceError(compareSource(condition), t) : undefined;
   if (kind === "always") return null;
   return (
     <div className="space-y-2">
@@ -497,8 +533,9 @@ function ConditionLeafFields({
         placeholder={t("effect.selectNode")}
         compact
       />
+      {targetError && <ValidationMessage message={targetError} />}
       {kind !== "exists" && (
-        <div className="space-y-2 rounded-md border bg-muted/20 p-2">
+        <div className={`space-y-2 rounded-md border bg-muted/20 p-2 ${sourceError ? "border-destructive" : ""}`}>
           <select value={valueKind} onChange={(event) => onChange(updateLeafValueKind(condition, event.target.value as "number" | "node"))} className={selectClass}>
             <option value="number">{t("effect.sourceNumber")}</option>
             <option value="node">{t("effect.sourceNode")}</option>
@@ -528,10 +565,26 @@ function ConditionLeafFields({
               </select>
             </div>
           )}
+          {sourceError && <ValidationMessage message={sourceError} />}
         </div>
       )}
     </div>
   );
+}
+
+function validateEffectSourceReference(source: EffectSource, t: ReturnType<typeof useI18n>["t"]): string[] {
+  if (source.kind === "node") return source.nodeId ? [] : [t("effect.inlineSourceNodeRequired")];
+  if (source.kind === "templateSlot") return source.slotId ? [] : [t("effect.inlineSourceNodeRequired")];
+  return [];
+}
+
+function firstSourceError(source: EffectSource | null, t: ReturnType<typeof useI18n>["t"]) {
+  if (!source) return undefined;
+  return validateEffectSourceReference(source, t)[0];
+}
+
+function ValidationMessage({ message }: { message: string }) {
+  return <p className="mt-1 text-xs text-destructive">{message}</p>;
 }
 
 function notifyConditionChange(callback: (() => void) | undefined) {
