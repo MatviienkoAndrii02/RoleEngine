@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/server/errors";
-import { assertUserHasWorkspaceRole, assertWorkspaceRoleMembership } from "@/server/authz";
+import { assertUserHasWorkspaceRole, assertWorkspaceRoleMembership, getUserWorkspaces } from "@/server/authz";
 import { deleteCharacterNode, updateCharacterNode } from "@/server/actions/characters";
 import { deleteTemplateNode, updateTemplateNode } from "@/server/actions/templates";
 
@@ -205,6 +205,75 @@ describe("authz scope guards", () => {
     );
   });
 
+  it("rejects action mutations when a workspace member is only a PLAYER", async () => {
+    const unique = Date.now().toString(36);
+    const gm = await prisma.user.create({
+      data: {
+        email: `gm-${unique}@example.com`,
+        username: `gm_${unique}`,
+        usernameKey: `gm_${unique}`,
+      },
+    });
+    const player = await prisma.user.create({
+      data: {
+        email: `player-${unique}@example.com`,
+        username: `player_${unique}`,
+        usernameKey: `player_${unique}`,
+      },
+    });
+    createdUserIds.push(gm.id, player.id);
+
+    const workspace = await prisma.workspace.create({ data: { name: `Player Role Workspace ${unique}` } });
+    createdWorkspaceIds.push(workspace.id);
+
+    await prisma.workspaceMembership.createMany({
+      data: [
+        { workspaceId: workspace.id, userId: gm.id, role: "OWNER" },
+        { workspaceId: workspace.id, userId: player.id, role: "PLAYER" },
+      ],
+    });
+
+    const character = await prisma.character.create({
+      data: {
+        workspaceId: workspace.id,
+        name: "Shared Character",
+        createdById: gm.id,
+      },
+    });
+
+    const node = await prisma.characterNode.create({
+      data: {
+        characterId: character.id,
+        type: "NUMBER",
+        name: "Base",
+        path: "base",
+        data: { value: 5 },
+      },
+    });
+
+    const playerSession = { user: { id: player.id } };
+
+    await assert.rejects(
+      () => updateCharacterNode({ characterId: character.id, nodeId: node.id, name: "Hacked" }, playerSession),
+      (error: unknown) => {
+        assert.ok(error instanceof AppError);
+        assert.equal(error.code, "FORBIDDEN");
+        assert.equal(error.status, 403);
+        return true;
+      },
+    );
+
+    await assert.rejects(
+      () => deleteCharacterNode({ characterId: character.id, nodeId: node.id }, playerSession),
+      (error: unknown) => {
+        assert.ok(error instanceof AppError);
+        assert.equal(error.code, "FORBIDDEN");
+        assert.equal(error.status, 403);
+        return true;
+      },
+    );
+  });
+
   it("rejects PATCH and DELETE template node mutations from another workspace", async () => {
     const unique = Date.now().toString(36);
     const owner = await prisma.user.create({
@@ -322,5 +391,45 @@ describe("authz scope guards", () => {
         return true;
       },
     );
+  });
+
+  it("returns only the memberships that belong to the current user", async () => {
+    const unique = Date.now().toString(36);
+    const actor = await prisma.user.create({
+      data: {
+        email: `member-${unique}@example.com`,
+        username: `member_${unique}`,
+        usernameKey: `member_${unique}`,
+      },
+    });
+    const stranger = await prisma.user.create({
+      data: {
+        email: `stranger-${unique}@example.com`,
+        username: `stranger_${unique}`,
+        usernameKey: `stranger_${unique}`,
+      },
+    });
+    createdUserIds.push(actor.id, stranger.id);
+
+    const workspaceA = await prisma.workspace.create({ data: { name: `Scope Workspace A ${unique}` } });
+    const workspaceB = await prisma.workspace.create({ data: { name: `Scope Workspace B ${unique}` } });
+    const workspaceC = await prisma.workspace.create({ data: { name: `Scope Workspace C ${unique}` } });
+    createdWorkspaceIds.push(workspaceA.id, workspaceB.id, workspaceC.id);
+
+    await prisma.workspaceMembership.createMany({
+      data: [
+        { workspaceId: workspaceA.id, userId: actor.id, role: "OWNER" },
+        { workspaceId: workspaceB.id, userId: actor.id, role: "GM" },
+        { workspaceId: workspaceC.id, userId: stranger.id, role: "OWNER" },
+      ],
+    });
+
+    const memberships = await getUserWorkspaces(actor.id);
+    assert.deepEqual(
+      memberships.map((workspace) => workspace.id).sort(),
+      [workspaceA.id, workspaceB.id].sort(),
+    );
+    assert.equal(memberships.every((workspace) => workspace.id !== workspaceC.id), true);
+    assert.equal((await getUserWorkspaces(stranger.id)).map((workspace) => workspace.id).includes(workspaceC.id), true);
   });
 });

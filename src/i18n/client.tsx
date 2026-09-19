@@ -6,7 +6,7 @@ import { defaultLanguage, isLanguage, translate, type Language, type Translation
 type I18nContextValue = {
   language: Language;
   setLanguage: (language: Language) => void;
-  t: (key: TranslationKey, params?: Record<string, string | number>) => string;
+  t: (key: string, params?: Record<string, string | number>) => string;
 };
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -22,7 +22,7 @@ export function I18nProvider({ initialLanguage, children }: { initialLanguage: L
       setLanguageState(nextLanguage);
       window.location.reload();
     },
-    t: (key, params) => translate(language, key, params),
+    t: (key, params) => translate(language, key as TranslationKey, params),
   }), [language]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
@@ -34,7 +34,7 @@ export function useI18n() {
     return {
       language: defaultLanguage,
       setLanguage: () => undefined,
-      t: (key: TranslationKey, params?: Record<string, string | number>) => translate(defaultLanguage, key, params),
+      t: (key: string, params?: Record<string, string | number>) => translate(defaultLanguage, key as TranslationKey, params),
     };
   }
   return value;

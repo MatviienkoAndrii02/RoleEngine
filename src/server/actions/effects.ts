@@ -185,6 +185,32 @@ export async function runTriggeredEffect(input: { effectId: string; nodeId: stri
   return result;
 }
 
+export async function withEffectMutationRollback<T>(characterId: string, effectId: string, mutate: () => Promise<T>): Promise<T> {
+  const current = await prisma.effect.findUniqueOrThrow({ where: { id: effectId } });
+  const snapshot = {
+    name: current.name,
+    enabled: current.enabled,
+    priority: current.priority,
+    operation: current.operation,
+    target: current.target as Prisma.InputJsonValue,
+    source: current.source as Prisma.InputJsonValue,
+    condition: current.condition as Prisma.InputJsonValue,
+    payload: current.payload as Prisma.InputJsonValue,
+  };
+
+  try {
+    return await mutate();
+  } catch (error) {
+    await prisma.effect.update({
+      where: { id: effectId },
+      data: snapshot,
+    });
+    await syncGraph(characterId);
+    await reconcileStructuralEffects(characterId);
+    throw error;
+  }
+}
+
 async function stabilizeCharacterEffects(characterId: string, actorId: string) {
   await reconcileStructuralEffects(characterId);
   await runTriggeredCharacterEffects(characterId, actorId);
@@ -276,50 +302,31 @@ export async function updateEffect(effectId: string, input: {
     }
   }
 
-  const updated = await prisma.effect.update({
-    where: { id: effectId },
-    data: {
-      name: input.name?.trim() || undefined,
-      enabled: input.enabled,
-      priority: input.priority,
-      operation: replacement?.operation,
-      target: replacement?.target,
-      source: replacement?.source,
-      condition: replacement?.condition,
-      payload: replacement?.payload,
-    },
-  });
-  try {
+  const updated = await withEffectMutationRollback(current.characterId ?? current.templateId ?? "", effectId, async () => {
+    const candidate = await prisma.effect.update({
+      where: { id: effectId },
+      data: {
+        name: input.name?.trim() || undefined,
+        enabled: input.enabled,
+        priority: input.priority,
+        operation: replacement?.operation,
+        target: replacement?.target,
+        source: replacement?.source,
+        condition: replacement?.condition,
+        payload: replacement?.payload,
+      },
+    });
+
     if (current.characterId) {
       await syncGraph(current.characterId);
       await stabilizeCharacterEffects(current.characterId, actor.id);
     } else if (current.templateId) {
       await validateTemplateEffectGraph(current.templateId);
     }
-  }
-  catch (error) {
-    await prisma.effect.update({
-      where: { id: effectId },
-      data: {
-        name: current.name,
-        enabled: current.enabled,
-        priority: current.priority,
-        operation: current.operation,
-        target: current.target as Prisma.InputJsonValue,
-        source: current.source as Prisma.InputJsonValue,
-        condition: current.condition as Prisma.InputJsonValue,
-        payload: current.payload as Prisma.InputJsonValue,
-      },
-    });
-    if (current.characterId) {
-      await syncGraph(current.characterId);
-      await reconcileStructuralEffects(current.characterId);
-    } else if (current.templateId) {
-      await validateTemplateEffectGraph(current.templateId);
-    }
-    throw error;
-  }
-  await prisma.auditLog.create({ data: { actorId: actor.id, workspaceId, characterId: current.characterId, entityType: "Effect", entityId: effectId, action: "UPDATE", oldValue: { name: current.name, enabled: current.enabled, priority: current.priority, operation: current.operation, target: current.target, source: current.source, condition: current.condition, payload: current.payload }, newValue: { name: updated.name, enabled: updated.enabled, priority: updated.priority, operation: updated.operation, target: updated.target, source: updated.source, condition: updated.condition, payload: updated.payload } } });
+
+    await prisma.auditLog.create({ data: { actorId: actor.id, workspaceId, characterId: current.characterId, entityType: "Effect", entityId: effectId, action: "UPDATE", oldValue: { name: current.name, enabled: current.enabled, priority: current.priority, operation: current.operation, target: current.target, source: current.source, condition: current.condition, payload: current.payload }, newValue: { name: candidate.name, enabled: candidate.enabled, priority: candidate.priority, operation: candidate.operation, target: candidate.target, source: candidate.source, condition: candidate.condition, payload: candidate.payload } } });
+    return candidate;
+  });
   if (current.characterId) revalidatePath(`/characters/${current.characterId}`);
   if (current.templateId) revalidatePath(`/templates/${current.templateId}`);
   return updated;

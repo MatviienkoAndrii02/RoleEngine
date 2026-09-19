@@ -29,7 +29,6 @@ export function ProblemsPanel({ problems }: { problems: ProblemItem[] }) {
           </CardTitle>
           <Badge className="bg-amber-100 text-amber-950">{t("problems.count", { count: problems.length })}</Badge>
         </div>
-        {/* <p className="text-sm text-amber-950/80">{t("problems.description")}</p> */}
       </CardHeader>
       <CardContent>
         <ul className="space-y-3">

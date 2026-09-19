@@ -11,6 +11,8 @@ export const apiErrorCodes = [
   "EFFECT_NAME_REQUIRED",
   "EFFECT_OPERATION_REQUIRED",
   "EFFECT_SCOPE_REQUIRED",
+  "EMAIL_DELIVERY_FAILED",
+  "EMAIL_DELIVERY_NOT_CONFIGURED",
   "FORBIDDEN",
   "INVALID_JSON",
   "NODE_NAME_REQUIRED",
@@ -18,6 +20,7 @@ export const apiErrorCodes = [
   "NUMERIC_SOURCE_CONDITION_REQUIRED",
   "NUMERIC_TARGET_REQUIRED",
   "PATCH_TARGET_REQUIRED",
+  "PASSWORD_RESET_INVALID",
   "STRUCTURAL_RECONCILE_FAILED",
   "STRUCTURAL_TARGET_INVALID",
   "TEMPLATE_BINDING_REQUIRED",
@@ -131,6 +134,7 @@ function legacyErrorByMessage(message: string): AppError | null {
     "Effect operation is required": appError("EFFECT_OPERATION_REQUIRED", message),
     "Numeric source and condition are required": appError("NUMERIC_SOURCE_CONDITION_REQUIRED", message),
     "Effect condition is required": appError("EFFECT_CONDITION_REQUIRED", message),
+    "Password reset token is invalid or expired": appError("PASSWORD_RESET_INVALID", message, 400),
   };
 
   if (exact[message]) return exact[message] ?? null;

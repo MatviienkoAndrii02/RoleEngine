@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { z } from "zod";
-import { appError, normalizeApiError } from "@/server/errors";
+import { apiErrorResponse, appError, normalizeApiError } from "@/server/errors";
 
 describe("normalizeApiError", () => {
   it("keeps explicit AppError codes and status", () => {
@@ -32,5 +32,17 @@ describe("normalizeApiError", () => {
     assert.equal(error.code, "UNKNOWN_ERROR");
     assert.equal(error.message, "Unexpected server error");
     assert.equal(error.status, 500);
+  });
+
+  it("returns the stable JSON envelope for API failures", async () => {
+    const response = apiErrorResponse(appError("FORBIDDEN", "No access", 403, { workspaceId: "w_1" }));
+    assert.equal(response.status, 403);
+
+    const body = await response.json();
+    assert.deepEqual(body, {
+      error: "FORBIDDEN",
+      message: "No access",
+      details: { workspaceId: "w_1" },
+    });
   });
 });

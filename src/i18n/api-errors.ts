@@ -1,6 +1,5 @@
-import type { TranslationKey } from "@/i18n/translations";
 
-type Translator = (key: TranslationKey, params?: Record<string, string | number>) => string;
+type Translator = (key: string, params?: Record<string, string | number>) => string;
 
 type ApiErrorPayload = {
   error?: unknown;
@@ -15,6 +14,8 @@ const apiErrorKeys = {
   DEPENDENCY_CYCLE: "apiError.DEPENDENCY_CYCLE",
   EFFECT_CONDITION_REQUIRED: "apiError.EFFECT_CONDITION_REQUIRED",
   EMAIL_ALREADY_REGISTERED: "apiError.EMAIL_ALREADY_REGISTERED",
+  EMAIL_DELIVERY_FAILED: "apiError.EMAIL_DELIVERY_FAILED",
+  EMAIL_DELIVERY_NOT_CONFIGURED: "apiError.EMAIL_DELIVERY_NOT_CONFIGURED",
   EFFECT_NAME_REQUIRED: "apiError.EFFECT_NAME_REQUIRED",
   EFFECT_OPERATION_REQUIRED: "apiError.EFFECT_OPERATION_REQUIRED",
   EFFECT_SCOPE_REQUIRED: "apiError.EFFECT_SCOPE_REQUIRED",
@@ -25,6 +26,7 @@ const apiErrorKeys = {
   NUMERIC_SOURCE_CONDITION_REQUIRED: "apiError.NUMERIC_SOURCE_CONDITION_REQUIRED",
   NUMERIC_TARGET_REQUIRED: "apiError.NUMERIC_TARGET_REQUIRED",
   PATCH_TARGET_REQUIRED: "apiError.PATCH_TARGET_REQUIRED",
+  PASSWORD_RESET_INVALID: "apiError.PASSWORD_RESET_INVALID",
   STRUCTURAL_RECONCILE_FAILED: "apiError.STRUCTURAL_RECONCILE_FAILED",
   STRUCTURAL_TARGET_INVALID: "apiError.STRUCTURAL_TARGET_INVALID",
   TEMPLATE_BINDING_REQUIRED: "apiError.TEMPLATE_BINDING_REQUIRED",
@@ -35,14 +37,14 @@ const apiErrorKeys = {
   UNSUPPORTED_OPERATION: "apiError.UNSUPPORTED_OPERATION",
   USERNAME_ALREADY_REGISTERED: "apiError.USERNAME_ALREADY_REGISTERED",
   VALIDATION_FAILED: "apiError.VALIDATION_FAILED",
-} as const satisfies Record<string, TranslationKey>;
+} as const;
 
-export async function localizedApiError(response: Response, t: Translator, fallbackKey: TranslationKey) {
+export async function localizedApiError(response: Response, t: Translator, fallbackKey: string) {
   const payload = await response.json().catch((): ApiErrorPayload => ({}));
   return apiErrorMessage(payload, t, fallbackKey);
 }
 
-export function apiErrorMessage(payload: ApiErrorPayload, t: Translator, fallbackKey: TranslationKey) {
+export function apiErrorMessage(payload: ApiErrorPayload, t: Translator, fallbackKey: string) {
   const code = typeof payload.error === "string" ? payload.error : "";
   const key = apiErrorKeys[code as keyof typeof apiErrorKeys];
   return key ? t(key) : t(fallbackKey);

@@ -18,6 +18,13 @@ function rejectDuplicateDefaultTemplate(error: unknown): never {
   throw error;
 }
 
+export async function withWorkspaceDefaultTemplateLock<T>(workspaceId: string, callback: (tx: Prisma.TransactionClient) => Promise<T>) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Workspace" WHERE id = ${workspaceId} FOR UPDATE`;
+    return callback(tx);
+  });
+}
+
 export async function createTemplate(input: {
   kind?: TemplateKind;
   name: string;
@@ -30,25 +37,27 @@ export async function createTemplate(input: {
   if (!name) throw new Error("Template name is required");
   const kind = input.kind ?? "OTHER";
 
-  if (input.isDefaultCharacter) {
-    await prisma.entityTemplate.updateMany({
-      where: { workspaceId, isDefaultCharacter: true },
-      data: { isDefaultCharacter: false }
-    });
-  }
-
   let template;
   try {
-    template = await prisma.entityTemplate.create({
-      data: {
-        kind,
-        workspaceId,
-        name,
-        description: input.description?.trim() || null,
-        isGlobal: false,
-        isDefaultCharacter: input.isDefaultCharacter ?? false,
-        createdById: actor.id
+    template = await withWorkspaceDefaultTemplateLock(workspaceId, async (tx) => {
+      if (input.isDefaultCharacter) {
+        await tx.entityTemplate.updateMany({
+          where: { workspaceId, isDefaultCharacter: true },
+          data: { isDefaultCharacter: false }
+        });
       }
+
+      return tx.entityTemplate.create({
+        data: {
+          kind,
+          workspaceId,
+          name,
+          description: input.description?.trim() || null,
+          isGlobal: false,
+          isDefaultCharacter: input.isDefaultCharacter ?? false,
+          createdById: actor.id
+        }
+      });
     });
   } catch (error) {
     rejectDuplicateDefaultTemplate(error);
@@ -115,7 +124,7 @@ export async function updateTemplate(input: { templateId: string; name?: string;
   if (input.name !== undefined && !name) throw new Error("Template name is required");
   let template;
   try {
-    template = await prisma.$transaction(async (tx) => {
+    template = await withWorkspaceDefaultTemplateLock(current.workspaceId ?? "", async (tx) => {
       if (input.isDefaultCharacter) await tx.entityTemplate.updateMany({ where: { workspaceId: current.workspaceId, isDefaultCharacter: true }, data: { isDefaultCharacter: false } });
       return tx.entityTemplate.update({ where: { id: input.templateId }, data: { name, description: input.description !== undefined ? input.description.trim() || null : undefined, isDefaultCharacter: input.isDefaultCharacter } });
     });
