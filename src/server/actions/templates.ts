@@ -1,7 +1,6 @@
 "use server";
 
 import type { NodeType, Prisma, TemplateKind } from "@prisma/client";
-import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireGM, requirePrimaryWritableWorkspace, requireTemplateGM } from "@/server/authz";
 import { writeAudit } from "@/server/audit";
@@ -9,6 +8,7 @@ import { copyTemplateIntoTemplate, slugify } from "@/server/template-copy";
 import { parseNodeData } from "@/domain/validation";
 import { parseTemplateTagColor, type TemplateTagColorName } from "@/domain/template-tags";
 import { collectSubtreeIds } from "@/domain/tree";
+import { safeRevalidatePath as revalidatePath } from "@/server/revalidate";
 import { appError } from "@/server/errors";
 
 function rejectDuplicateDefaultTemplate(error: unknown): never {

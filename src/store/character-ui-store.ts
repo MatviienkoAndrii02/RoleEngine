@@ -96,7 +96,9 @@ export const useCharacterUiStore = create<CharacterUiState>((set) => ({
   completeNodePick: (nodeId) =>
     set((state) => state.nodePickRequest
       ? {
-          selectedNodeId: nodeId,
+          // Do not touch selectedNodeId here: the picker writes into a form field
+          // (e.g. NodeEditor parent), and changing the tree selection would
+          // remount the form and wipe already filled fields.
           pickedNode: { pickerId: state.nodePickRequest.pickerId, nodeId, nonce: Date.now() },
           nodePickRequest: null,
         }

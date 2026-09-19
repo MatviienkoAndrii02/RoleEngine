@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { appError } from "@/server/errors";
-import { deleteCharacterNodeRoute, patchCharacterNodeRoute } from "@/app/api/characters/[characterId]/nodes/[nodeId]/route";
-import { deleteTemplateNodeRoute, patchTemplateNodeRoute } from "@/app/api/templates/[templateId]/nodes/[nodeId]/route";
+import { deleteCharacterNodeRoute, patchCharacterNodeRoute } from "@/app/api/characters/[characterId]/nodes/[nodeId]/node-route-handlers";
+import { deleteTemplateNodeRoute, patchTemplateNodeRoute } from "@/app/api/templates/[templateId]/nodes/[nodeId]/node-route-handlers";
 
 describe("api route authorization envelope", () => {
   it("forbidden patch/delete on character node routes returns the API envelope", async () => {

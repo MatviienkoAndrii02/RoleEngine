@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { appError } from "@/server/errors";
-import { deleteCharacterNodeRoute, patchCharacterNodeRoute } from "./route";
+import { deleteCharacterNodeRoute, patchCharacterNodeRoute } from "./node-route-handlers";
 
 describe("character node API route", () => {
   it("returns a forbidden envelope for patch failures", async () => {
