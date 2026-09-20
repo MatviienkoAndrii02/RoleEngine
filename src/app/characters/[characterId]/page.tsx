@@ -16,6 +16,7 @@ import { CharacterSettings } from "@/components/characters/character-settings";
 import { SidebarSection } from "@/components/characters/sidebar-section";
 import { DependencyPanel } from "@/components/characters/dependency-panel";
 import { ImpactPanel } from "@/components/characters/impact-panel";
+import { JsonIntegrityPanel } from "@/components/characters/json-integrity-panel";
 import { ProblemsPanel, type ProblemItem } from "@/components/characters/problems-panel";
 import { NodeArchive, type ArchivedNodeItem } from "@/components/characters/node-archive";
 import { AuditList } from "@/components/history/audit-list";
@@ -23,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canReadCharacter } from "@/server/authz";
 import { requirePageUser } from "@/server/page-auth";
 import { resolveCharacterNodeLinks } from "@/server/node-links";
+import { getJsonIntegrityReport } from "@/server/json-integrity";
 import { getTranslator } from "@/i18n/server";
 import { parseCharacterNodeModels, parseEffectDefinitions, type PersistedJsonDiagnostic } from "@/server/read-models";
 import { collectSubtreeIds } from "@/domain/tree";
@@ -159,6 +161,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
   const parsedArchivedNodes = parseCharacterNodeModels(archivedNodeRecords);
   diagnostics = [...diagnostics, ...parsedArchivedNodes.diagnostics];
   const archivedItems = buildArchivedNodeItems(parsedArchivedNodes.nodes);
+  const jsonIntegrity = canEdit ? await getJsonIntegrityReport({ kind: "character", characterId: data.id }) : null;
   const problems = buildCharacterProblems({
     cycles: engineResult.cycles,
     diagnostics: canEdit ? diagnostics : [],
@@ -237,6 +240,14 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
       </div>
 
       <ProblemsPanel problems={problems} />
+      {jsonIntegrity && (
+        <JsonIntegrityPanel
+          scopeKind="character"
+          scopeId={data.id}
+          entries={jsonIntegrity.entries}
+          quarantine={jsonIntegrity.quarantine}
+        />
+      )}
       {canEdit && <ImpactPanel />}
 
       {canEdit ? <CharacterViewMode gmView={gmView} playerView={playerView} /> : playerView}
