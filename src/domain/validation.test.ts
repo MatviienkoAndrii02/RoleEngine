@@ -16,6 +16,7 @@ import {
   updateNodeCommandSchema,
   updateEffectCommandSchema,
   updateCharacterCommandSchema,
+  jsonIntegrityCommandSchema,
 } from "@/domain/validation";
 
 test("accepts valid Unicode number node data", () => {
@@ -394,4 +395,13 @@ test("registration username preserves case while validating allowed characters",
     username: "Міра",
     password: "demo1234",
   }));
+});
+
+test("validates json integrity command envelopes", () => {
+  assert.equal(jsonIntegrityCommandSchema.parse({ action: "repair" }).action, "repair");
+  assert.equal(jsonIntegrityCommandSchema.parse({ action: "quarantine" }).action, "quarantine");
+  const resolved = jsonIntegrityCommandSchema.parse({ action: "resolve", entryId: "entry_1", resolution: "release" });
+  assert.equal(resolved.action, "resolve");
+  assert.throws(() => jsonIntegrityCommandSchema.parse({ action: "purge" }));
+  assert.throws(() => jsonIntegrityCommandSchema.parse({ action: "resolve", entryId: "", resolution: "release" }));
 });

@@ -442,6 +442,21 @@ export const updateTemplateTagBodyCommandSchema = z.object({
   color: templateTagColorSchema.optional(),
 }).strict().refine((value) => value.name !== undefined || value.color !== undefined, { message: "At least one field must be provided" });
 
+export const jsonIntegrityActionSchema = z.enum(["repair", "quarantine"]);
+
+export const jsonIntegrityCommandSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: jsonIntegrityActionSchema,
+  }).strict(),
+  z.object({
+    action: z.literal("resolve"),
+    entryId: z.string().min(1),
+    resolution: z.enum(["repair", "release"]),
+  }).strict(),
+]);
+
+export type JsonIntegrityCommand = z.output<typeof jsonIntegrityCommandSchema>;
+
 export const deleteTemplateTagCommandSchema = z.object({
   templateId: idSchema,
   tagId: idSchema,
