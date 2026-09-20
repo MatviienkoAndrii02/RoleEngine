@@ -1,11 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_WORKSPACE_COOKIE, requireUser, requireWorkspaceRole } from "@/server/authz";
+import { safeRevalidatePath as revalidatePath } from "@/server/revalidate";
 import {
   addWorkspaceMemberCommandSchema,
   createWorkspaceCommandSchema,

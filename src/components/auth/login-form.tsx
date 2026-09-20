@@ -115,6 +115,13 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
         <SubmitIcon className="h-4 w-4" />
         {pending ? (isRegistering ? t("register.pending") : t("login.pending")) : (isRegistering ? t("register.submit") : t("login.submit"))}
       </Button>
+      {!isRegistering && (
+        <div className="text-center text-sm">
+          <a className="text-muted-foreground underline-offset-4 hover:underline" href="/login/forgot-password">
+            {t("login.forgotPassword")}
+          </a>
+        </div>
+      )}
       <div className="text-center text-sm text-muted-foreground">
         {isRegistering ? t("register.haveAccount") : t("register.needAccount")}{" "}
         <button

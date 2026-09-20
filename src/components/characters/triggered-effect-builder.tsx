@@ -7,7 +7,7 @@ import type { CharacterNodeModel } from "@/domain/nodes";
 import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
+import { EffectConditionBuilder, readEffectCondition, validateEffectCondition } from "@/components/characters/effect-condition-builder";
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
 import { EffectPreview } from "@/components/characters/effect-preview";
 import { conditionExpressionSummary, nodeSummary, triggeredActionSummary } from "@/components/characters/effect-summary";
@@ -17,6 +17,7 @@ import {
   newTriggeredActionRow,
   readTriggeredAction,
   TriggeredActionEditor,
+  validateTriggeredAction,
   type TriggeredActionRow,
 } from "@/components/characters/triggered-action-editor";
 import { localizedApiError } from "@/i18n/api-errors";
@@ -102,9 +103,14 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
 
   async function submit(data: FormData) {
     setValidationAttempted(true);
-    setPending(true);
     setError(null);
     const triggerCondition = readEffectCondition(data, "trigger");
+    const actionValidation = rows.flatMap((row, index) => validateTriggeredAction(row, data, index, "action", t));
+    if ([...validateEffectCondition(triggerCondition, t), ...actionValidation].length > 0) {
+      setError(t("effect.fixValidationErrors"));
+      return;
+    }
+    setPending(true);
     const response = await trackImpact(characterId, t("impact.effectCreated"), () =>
       fetch(endpoint, {
         method: "POST",
@@ -160,7 +166,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
             placeholder={t("effect.triggerNode")}
           />
         )}
-        <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="trigger" onConditionChange={refreshPreview} />
+        <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="trigger" onConditionChange={refreshPreview} showValidationErrors={validationAttempted} />
       </EffectEditorSection>
       <EffectEditorSection title={t("effect.triggerActions")} summary={t("effect.actionsCount", { count: rows.length })} error={actionError}>
         <div className="flex items-center justify-between gap-3">

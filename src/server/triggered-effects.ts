@@ -21,19 +21,21 @@ export async function runTriggeredCharacterEffects(characterId: string, actorId:
 }
 
 export async function runManualTriggeredEffect(effectId: string, actorId: string, clickedNodeId: string) {
-  return prisma.$transaction(async (tx) => {
-    const effectRecord = await tx.effect.findUniqueOrThrow({ where: { id: effectId } });
-    if (!effectRecord.characterId || !effectRecord.enabled || effectRecord.operation !== "TRIGGERED") return { runs: 0, actions: 0 };
-    const character = await tx.character.findUniqueOrThrow({ where: { id: effectRecord.characterId }, select: { workspaceId: true } });
-    const parsed = parseEffectDefinitions([effectRecord]).effects[0];
-    const triggered = parsed?.payload?.triggered;
-    if (!triggered || triggered.trigger.kind !== "nodeClick" || triggered.trigger.nodeId !== clickedNodeId) return { runs: 0, actions: 0 };
-    const nodes = await loadNodes(tx, effectRecord.characterId);
-    const ctx: TriggeredContext = { nodes: new Map(nodes.map((node) => [node.id, node])) };
-    if (!evaluateCondition(triggered.trigger.condition, ctx)) return { runs: 0, actions: 0 };
-    const result = await applyTriggeredActions(tx, effectRecord.characterId, actorId, character.workspaceId, parsed, triggered.actions, ctx);
-    return { runs: result.actions > 0 ? 1 : 0, actions: result.actions };
-  }, { timeout: 20_000 });
+  return prisma.$transaction((tx) => runManualTriggeredEffectInTransaction(tx, effectId, actorId, clickedNodeId), { timeout: 20_000 });
+}
+
+export async function runManualTriggeredEffectInTransaction(tx: PrismaTx, effectId: string, actorId: string, clickedNodeId: string) {
+  const effectRecord = await tx.effect.findUniqueOrThrow({ where: { id: effectId } });
+  if (!effectRecord.characterId || !effectRecord.enabled || effectRecord.operation !== "TRIGGERED") return { runs: 0, actions: 0 };
+  const character = await tx.character.findUniqueOrThrow({ where: { id: effectRecord.characterId }, select: { workspaceId: true } });
+  const parsed = parseEffectDefinitions([effectRecord]).effects[0];
+  const triggered = parsed?.payload?.triggered;
+  if (!triggered || triggered.trigger.kind !== "nodeClick" || triggered.trigger.nodeId !== clickedNodeId) return { runs: 0, actions: 0 };
+  const nodes = await loadNodes(tx, effectRecord.characterId);
+  const ctx: TriggeredContext = { nodes: new Map(nodes.map((node) => [node.id, node])) };
+  if (!evaluateCondition(triggered.trigger.condition, ctx)) return { runs: 0, actions: 0 };
+  const result = await applyTriggeredActions(tx, effectRecord.characterId, actorId, character.workspaceId, parsed, triggered.actions, ctx);
+  return { runs: result.actions > 0 ? 1 : 0, actions: result.actions };
 }
 
 export async function runTriggeredCharacterEffectsInTransaction(tx: PrismaTx, characterId: string, actorId: string) {

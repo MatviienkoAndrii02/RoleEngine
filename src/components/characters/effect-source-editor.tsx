@@ -4,7 +4,7 @@ import type { EffectSource } from "@/domain/effects";
 import type { CharacterNodeModel } from "@/domain/nodes";
 import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Input } from "@/components/ui/input";
-import { FormulaSourceFields, readFormulaExpression } from "@/components/characters/formula-source-fields";
+import { FormulaSourceFields, readFormulaExpression, validateFormulaExpression } from "@/components/characters/formula-source-fields";
 import { NodePicker, type NodePickerExtraOption } from "@/components/characters/node-picker";
 import { useI18n } from "@/i18n/client";
 
@@ -21,6 +21,7 @@ export function EffectSourceEditor({
   prefix = "",
   defaultSource,
   compactNodePicker = true,
+  showValidationErrors = false,
 }: {
   kind: EditableEffectSourceKind;
   onKindChange: (kind: EditableEffectSourceKind) => void;
@@ -30,6 +31,7 @@ export function EffectSourceEditor({
   prefix?: string;
   defaultSource?: EffectSource | null;
   compactNodePicker?: boolean;
+  showValidationErrors?: boolean;
 }) {
   const { t } = useI18n();
   const slotOptions = extraOptions ?? slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
@@ -55,7 +57,7 @@ export function EffectSourceEditor({
           compact={compactNodePicker}
         />
       )}
-      {kind === "formula" && <FormulaSourceFields nodes={nodes} slots={slots} prefix={formulaPrefix(prefix)} defaultExpression={simpleFormula} />}
+      {kind === "formula" && <FormulaSourceFields nodes={nodes} slots={slots} prefix={formulaPrefix(prefix)} defaultExpression={simpleFormula} showValidationErrors={showValidationErrors} />}
     </div>
   );
 }
@@ -64,6 +66,14 @@ export function readEditableEffectSource(data: FormData, kind: EditableEffectSou
   if (kind === "number") return { kind: "number", value: Number(data.get(sourceFieldName(prefix, "sourceValue"))) };
   if (kind === "node") return readNodeOrSlotSource(String(data.get(sourceFieldName(prefix, "sourceNodeId")) ?? ""));
   return { kind: "formula", expression: readFormulaExpression(data, formulaPrefix(prefix)) };
+}
+
+export function validateEditableEffectSource(source: EffectSource, t: ReturnType<typeof useI18n>["t"]): string[] {
+  if (source.kind === "node") return source.nodeId ? [] : [t("effect.inlineSourceNodeRequired")];
+  if (source.kind === "templateSlot") return source.slotId ? [] : [t("effect.inlineSourceNodeRequired")];
+  if (source.kind === "formula") return validateFormulaExpression(source.expression, t);
+  if (source.kind === "number") return Number.isFinite(source.value) ? [] : [t("effect.inlineNumberRequired")];
+  return [];
 }
 
 export function sourceKindLabel(kind: EditableEffectSourceKind, t: ReturnType<typeof useI18n>["t"]) {

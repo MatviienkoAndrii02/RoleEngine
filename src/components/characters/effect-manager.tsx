@@ -17,9 +17,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EffectConditionBuilder, readEffectCondition } from "@/components/characters/effect-condition-builder";
+import { EffectConditionBuilder, readEffectCondition, validateEffectCondition } from "@/components/characters/effect-condition-builder";
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
-import { EffectSourceEditor, readEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
+import { EffectSourceEditor, readEditableEffectSource, validateEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
 import {
   conditionExpressionSummary,
   nodeSummary,
@@ -36,6 +36,7 @@ import {
   readTriggeredAction,
   TriggeredActionEditor,
   triggeredActionToRow,
+  validateTriggeredAction,
   type TriggeredActionRow,
 } from "@/components/characters/triggered-action-editor";
 import { localizedApiError } from "@/i18n/api-errors";
@@ -234,6 +235,8 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
     setValidationAttempted(true);
     if (effect.operation === "TRIGGERED") {
       const triggerConditionValue = readEffectCondition(formData, "triggerEdit", triggerCondition);
+      const actionValidation = triggerRows.flatMap((row, index) => validateTriggeredAction(row, formData, index, "edit-action", t));
+      if ([...validateEffectCondition(triggerConditionValue, t), ...actionValidation].length > 0) return;
       onSave({
         name: String(formData.get("name")),
         enabled: formData.get("enabled") === "on",
@@ -247,6 +250,10 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
       return;
     }
     const condition = readEffectCondition(formData, "condition", effect.condition);
+    const sourceValidation = (isNumeric || (isPatch && patchMode === "source" && selectedPatchField?.derived))
+      ? validateEditableEffectSource(readSource(sourceKind, formData, effect.source), t)
+      : [];
+    if ([...validateEffectCondition(condition, t), ...sourceValidation].length > 0) return;
     const common = {
       name: String(formData.get("name")),
       enabled: formData.get("enabled") === "on",
@@ -285,7 +292,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
       </EffectEditorSection>
       {effect.operation !== "TRIGGERED" && (
         <EffectEditorSection title={t("effect.condition")} summary={conditionPreview} defaultOpen={false}>
-          <EffectConditionBuilder nodes={nodes} slots={slots} condition={effect.condition} allowCurrent onConditionChange={refreshConditionPreview} />
+          <EffectConditionBuilder nodes={nodes} slots={slots} condition={effect.condition} allowCurrent onConditionChange={refreshConditionPreview} showValidationErrors={validationAttempted} />
         </EffectEditorSection>
       )}
       {effect.operation === "TRIGGERED" ? (
@@ -305,7 +312,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
               placeholder={t("effect.triggerNode")}
             />
           )}
-          <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="triggerEdit" condition={triggerCondition} allowCurrent onConditionChange={refreshConditionPreview} />
+          <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="triggerEdit" condition={triggerCondition} allowCurrent onConditionChange={refreshConditionPreview} showValidationErrors={validationAttempted} />
         </EffectEditorSection>
         <EffectEditorSection title={t("effect.triggerActions")} summary={triggeredActionsSummary(triggeredPayload?.actions ?? [], triggerRows.length, nodes, slots, t, rootLabel)} error={actionError}>
           <div className="flex items-center justify-between gap-3">
@@ -379,10 +386,10 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
       )}
       {effect.operation !== "TRIGGERED" && (
       <EffectEditorSection title={payloadSectionTitle(isNumeric, isPatch, t)} summary={payloadSummary(effect, isNumeric, isPatch, sourceKind, selectedPatchField, operation, nodes, slots, rootLabel, t)}>
-        {isNumeric && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} />}
+        {isNumeric && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} showValidationErrors={validationAttempted} />}
         {!isNumeric && !isPatch && <CreatedNodeFields payload={initialPayload} operation={operation} type={createdType} setType={setCreatedType} />}
         {isPatch && <PatchFields fields={patchFields} selectedField={selectedPatchField} value={patchField} setValue={setPatchField} patch={effect.payload?.patch} mode={patchMode} setMode={setPatchMode} targetType={selectedTarget?.type} />}
-        {isPatch && patchMode === "source" && selectedPatchField?.derived && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} />}
+        {isPatch && patchMode === "source" && selectedPatchField?.derived && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} showValidationErrors={validationAttempted} />}
       </EffectEditorSection>
       )}
 
@@ -391,7 +398,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
   );
 }
 
-function SourceFields({ effect, nodes, slots, kind, setKind }: { effect: EffectItem; nodes: CharacterNodeModel[]; slots: TemplateSlotModel[]; kind: string; setKind: (kind: string) => void }) {
+function SourceFields({ effect, nodes, slots, kind, setKind, showValidationErrors }: { effect: EffectItem; nodes: CharacterNodeModel[]; slots: TemplateSlotModel[]; kind: string; setKind: (kind: string) => void; showValidationErrors: boolean }) {
   const { t } = useI18n();
   const source = effect.source;
   if (kind === "current") {
@@ -415,6 +422,7 @@ function SourceFields({ effect, nodes, slots, kind, setKind }: { effect: EffectI
         nodes={nodes}
         slots={slots}
         defaultSource={source}
+        showValidationErrors={showValidationErrors}
       />
     </Labeled>
   );

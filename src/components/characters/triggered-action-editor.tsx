@@ -9,7 +9,7 @@ import { getPatchFields, getNumericPatchFields, type PatchFieldDefinition } from
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EffectEditorSection } from "@/components/characters/effect-editor-section";
-import { EffectSourceEditor, readEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
+import { EffectSourceEditor, readEditableEffectSource, validateEditableEffectSource, type EditableEffectSourceKind } from "@/components/characters/effect-source-editor";
 import { nodeSummary, numericActionSummary, triggeredActionSummary } from "@/components/characters/effect-summary";
 import { NodeAccentColorPicker } from "@/components/characters/node-accent-color-picker";
 import { NodeIconPicker } from "@/components/characters/node-icons";
@@ -183,7 +183,7 @@ export function TriggeredActionEditor({
               </Button>
             </div>
             {row.kind === "NUMERIC" && (
-              <NumericActionFields row={row} index={index} numericNodes={numericNodes} numericSlotOptions={numericSlotOptions} originalAction={originalAction?.kind === "NUMERIC" ? originalAction : undefined} fieldNamespace={fieldNamespace} setRows={setRows} />
+              <NumericActionFields row={row} index={index} numericNodes={numericNodes} numericSlotOptions={numericSlotOptions} originalAction={originalAction?.kind === "NUMERIC" ? originalAction : undefined} fieldNamespace={fieldNamespace} setRows={setRows} showValidationErrors={showValidationErrors} />
             )}
             {(row.kind === "CREATE_NODE" || row.kind === "CREATE_GROUP") && (
               <CreateActionFields row={row} index={index} containers={containers} containerSlotOptions={containerSlotOptions} rootLabel={rootLabel} originalAction={originalAction?.kind === "CREATE_NODE" || originalAction?.kind === "CREATE_GROUP" ? originalAction : undefined} fieldNamespace={fieldNamespace} setRows={setRows} />
@@ -198,7 +198,7 @@ export function TriggeredActionEditor({
   );
 }
 
-function NumericActionFields({ row, index, numericNodes, numericSlotOptions, originalAction, fieldNamespace, setRows }: { row: TriggeredActionRow; index: number; numericNodes: CharacterNodeModel[]; numericSlotOptions: Array<{ value: string; label: string }>; originalAction?: Extract<TriggeredEffectAction, { kind: "NUMERIC" }>; fieldNamespace: string; setRows: Dispatch<SetStateAction<TriggeredActionRow[]>> }) {
+function NumericActionFields({ row, index, numericNodes, numericSlotOptions, originalAction, fieldNamespace, setRows, showValidationErrors }: { row: TriggeredActionRow; index: number; numericNodes: CharacterNodeModel[]; numericSlotOptions: Array<{ value: string; label: string }>; originalAction?: Extract<TriggeredEffectAction, { kind: "NUMERIC" }>; fieldNamespace: string; setRows: Dispatch<SetStateAction<TriggeredActionRow[]>>; showValidationErrors: boolean }) {
   const { t } = useI18n();
   const prefix = fieldPrefix(fieldNamespace, index);
   const selected = parseTemplateSelectValue(row.targetNodeId);
@@ -218,6 +218,7 @@ function NumericActionFields({ row, index, numericNodes, numericSlotOptions, ori
         extraOptions={numericSlotOptions}
         prefix={prefix}
         defaultSource={originalAction?.source}
+        showValidationErrors={showValidationErrors}
       />
     </div>
   );
@@ -339,6 +340,22 @@ export function triggeredActionToRow(action: TriggeredEffectAction): TriggeredAc
 
 export function newTriggeredActionRow(): TriggeredActionRow {
   return { id: createClientId(), kind: "NUMERIC", sourceKind: "number", targetNodeId: "", createdType: "NUMBER", patchField: "" };
+}
+
+export function validateTriggeredAction(row: TriggeredActionRow, data: FormData, index: number, fieldNamespace: string, t: ReturnType<typeof useI18n>["t"]): string[] {
+  const prefix = fieldPrefix(fieldNamespace, index);
+  if (row.kind === "NUMERIC") {
+    const source = readEditableEffectSource(data, row.sourceKind, prefix);
+    return [
+      ...(String(data.get(`${prefix}-targetNodeId`) ?? "") ? [] : [t("effect.inlineTargetRequired")]),
+      ...validateEditableEffectSource(source, t),
+    ];
+  }
+  if (row.kind === "PATCH_NODE_PROPS") {
+    return String(data.get(`${prefix}-patchTargetNodeId`) ?? "") ? [] : [t("effect.inlineTargetRequired")];
+  }
+  const name = String(data.get(`${prefix}-createdName`) ?? "").trim();
+  return name ? [] : [t("effect.inlineCreatedNodeNameRequired")];
 }
 
 function createClientId() {

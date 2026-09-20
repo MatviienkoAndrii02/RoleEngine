@@ -12,8 +12,9 @@ export async function writeAudit(input: {
   oldValue?: Prisma.InputJsonValue;
   newValue?: Prisma.InputJsonValue;
   metadata?: Prisma.InputJsonValue;
-}) {
-  return prisma.auditLog.create({
+}, tx?: Prisma.TransactionClient) {
+  // Passing a transaction client keeps the audit entry atomic with its mutation.
+  return (tx ?? prisma).auditLog.create({
     data: {
       actorId: input.actorId,
       workspaceId: input.workspaceId,

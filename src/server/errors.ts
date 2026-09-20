@@ -11,6 +11,8 @@ export const apiErrorCodes = [
   "EFFECT_NAME_REQUIRED",
   "EFFECT_OPERATION_REQUIRED",
   "EFFECT_SCOPE_REQUIRED",
+  "EMAIL_DELIVERY_FAILED",
+  "EMAIL_DELIVERY_NOT_CONFIGURED",
   "FORBIDDEN",
   "INVALID_JSON",
   "NODE_NAME_REQUIRED",
@@ -18,8 +20,10 @@ export const apiErrorCodes = [
   "NUMERIC_SOURCE_CONDITION_REQUIRED",
   "NUMERIC_TARGET_REQUIRED",
   "PATCH_TARGET_REQUIRED",
+  "PASSWORD_RESET_INVALID",
   "STRUCTURAL_RECONCILE_FAILED",
   "STRUCTURAL_TARGET_INVALID",
+  "TEMPLATE_BINDING_REQUIRED",
   "TEMPLATE_NAME_REQUIRED",
   "TEMPLATE_NOT_FOUND",
   "UNAUTHORIZED",
@@ -124,11 +128,13 @@ function legacyErrorByMessage(message: string): AppError | null {
     "Effect creates a dependency cycle": appError("DEPENDENCY_CYCLE", message, 409),
     "Patch target is required": appError("PATCH_TARGET_REQUIRED", message),
     "Structural effects did not reach a stable state": appError("STRUCTURAL_RECONCILE_FAILED", message, 409),
+    "Required template slot binding is missing": appError("TEMPLATE_BINDING_REQUIRED", message),
     "Template not found": appError("TEMPLATE_NOT_FOUND", message, 404),
     "Effect scope is required": appError("EFFECT_SCOPE_REQUIRED", message),
     "Effect operation is required": appError("EFFECT_OPERATION_REQUIRED", message),
     "Numeric source and condition are required": appError("NUMERIC_SOURCE_CONDITION_REQUIRED", message),
     "Effect condition is required": appError("EFFECT_CONDITION_REQUIRED", message),
+    "Password reset token is invalid or expired": appError("PASSWORD_RESET_INVALID", message, 400),
   };
 
   if (exact[message]) return exact[message] ?? null;

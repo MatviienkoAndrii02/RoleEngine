@@ -11,6 +11,6 @@ export async function getTranslator() {
   const language = await getLanguage();
   return {
     language,
-    t: (key: TranslationKey, params?: Record<string, string | number>) => translate(language, key, params),
+    t: (key: string, params?: Record<string, string | number>) => translate(language, key as TranslationKey, params),
   };
 }

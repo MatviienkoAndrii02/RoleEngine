@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { remapTemplateEffectJson } from "@/server/template-copy";
+import { collectReferencedTemplateSlotIds, remapTemplateEffectJson } from "@/server/template-copy";
 
 test("remaps template effect node references in nested JSON", () => {
   const result = remapTemplateEffectJson({
@@ -85,4 +85,25 @@ test("remaps template slot references to bound character nodes", () => {
       ],
     },
   });
+});
+
+test("collects only template slots referenced by effect JSON", () => {
+  const result = collectReferencedTemplateSlotIds([
+    {
+      condition: { kind: "slotExists", slotId: "slot_condition" },
+      target: { kind: "templateSlot", slotId: "slot_target" },
+      source: {
+        kind: "formula",
+        expression: {
+          kind: "multiply",
+          left: { kind: "slotRef", slotId: "slot_formula", field: "value" },
+          right: { kind: "const", value: 10 },
+        },
+      },
+    },
+    { kind: "compareSlot", slotId: "slot_compare", operator: "gt", value: { kind: "number", value: 1 } },
+  ]);
+
+  assert.deepEqual([...result].sort(), ["slot_compare", "slot_condition", "slot_formula", "slot_target"]);
+  assert.equal(result.has("unused_required_slot"), false);
 });

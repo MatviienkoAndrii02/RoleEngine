@@ -1,7 +1,6 @@
 "use server";
 
 import type { NodeType, Prisma, TemplateKind } from "@prisma/client";
-import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireGM, requirePrimaryWritableWorkspace, requireTemplateGM } from "@/server/authz";
 import { writeAudit } from "@/server/audit";
@@ -9,7 +8,22 @@ import { copyTemplateIntoTemplate, slugify } from "@/server/template-copy";
 import { parseNodeData } from "@/domain/validation";
 import { parseTemplateTagColor, type TemplateTagColorName } from "@/domain/template-tags";
 import { collectSubtreeIds } from "@/domain/tree";
+import { safeRevalidatePath as revalidatePath } from "@/server/revalidate";
 import { appError } from "@/server/errors";
+
+function rejectDuplicateDefaultTemplate(error: unknown): never {
+  if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2002") {
+    throw appError("BAD_REQUEST", "Only one default character template can exist per workspace");
+  }
+  throw error;
+}
+
+export async function withWorkspaceDefaultTemplateLock<T>(workspaceId: string, callback: (tx: Prisma.TransactionClient) => Promise<T>) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Workspace" WHERE id = ${workspaceId} FOR UPDATE`;
+    return callback(tx);
+  });
+}
 
 export async function createTemplate(input: {
   kind?: TemplateKind;
@@ -23,24 +37,31 @@ export async function createTemplate(input: {
   if (!name) throw new Error("Template name is required");
   const kind = input.kind ?? "OTHER";
 
-  if (input.isDefaultCharacter) {
-    await prisma.entityTemplate.updateMany({
-      where: { workspaceId, isDefaultCharacter: true },
-      data: { isDefaultCharacter: false }
-    });
-  }
+  let template;
+  try {
+    template = await withWorkspaceDefaultTemplateLock(workspaceId, async (tx) => {
+      if (input.isDefaultCharacter) {
+        await tx.entityTemplate.updateMany({
+          where: { workspaceId, isDefaultCharacter: true },
+          data: { isDefaultCharacter: false }
+        });
+      }
 
-  const template = await prisma.entityTemplate.create({
-    data: {
-      kind,
-      workspaceId,
-      name,
-      description: input.description?.trim() || null,
-      isGlobal: false,
-      isDefaultCharacter: input.isDefaultCharacter ?? false,
-      createdById: actor.id
-    }
-  });
+      return tx.entityTemplate.create({
+        data: {
+          kind,
+          workspaceId,
+          name,
+          description: input.description?.trim() || null,
+          isGlobal: false,
+          isDefaultCharacter: input.isDefaultCharacter ?? false,
+          createdById: actor.id
+        }
+      });
+    });
+  } catch (error) {
+    rejectDuplicateDefaultTemplate(error);
+  }
 
   await writeAudit({
     actorId: actor.id,
@@ -101,10 +122,15 @@ export async function updateTemplate(input: { templateId: string; name?: string;
   const current = (await requireTemplateGM(input.templateId)).template;
   const name = input.name?.trim();
   if (input.name !== undefined && !name) throw new Error("Template name is required");
-  const template = await prisma.$transaction(async (tx) => {
-    if (input.isDefaultCharacter) await tx.entityTemplate.updateMany({ where: { workspaceId: current.workspaceId, isDefaultCharacter: true }, data: { isDefaultCharacter: false } });
-    return tx.entityTemplate.update({ where: { id: input.templateId }, data: { name, description: input.description !== undefined ? input.description.trim() || null : undefined, isDefaultCharacter: input.isDefaultCharacter } });
-  });
+  let template;
+  try {
+    template = await withWorkspaceDefaultTemplateLock(current.workspaceId ?? "", async (tx) => {
+      if (input.isDefaultCharacter) await tx.entityTemplate.updateMany({ where: { workspaceId: current.workspaceId, isDefaultCharacter: true }, data: { isDefaultCharacter: false } });
+      return tx.entityTemplate.update({ where: { id: input.templateId }, data: { name, description: input.description !== undefined ? input.description.trim() || null : undefined, isDefaultCharacter: input.isDefaultCharacter } });
+    });
+  } catch (error) {
+    rejectDuplicateDefaultTemplate(error);
+  }
   await writeAudit({ actorId: actor.id, workspaceId: current.workspaceId, entityType: "EntityTemplate", entityId: template.id, action: "UPDATE", oldValue: { name: current.name, description: current.description }, newValue: { name: template.name, description: template.description } });
   revalidatePath("/templates");
   revalidatePath(`/templates/${template.id}`);
@@ -157,9 +183,9 @@ export async function permanentlyDeleteTemplate(templateId: string) {
   revalidatePath("/templates");
 }
 
-export async function updateTemplateNode(input: { templateId: string; nodeId: string; name?: string; parentId?: string | null; data?: unknown }) {
-  const actor = await requireGM();
-  const { template } = await requireTemplateGM(input.templateId);
+export async function updateTemplateNode(input: { templateId: string; nodeId: string; name?: string; parentId?: string | null; data?: unknown }, sessionOverride?: Parameters<typeof requireGM>[0]) {
+  const actor = await requireGM(sessionOverride);
+  const { template } = await requireTemplateGM(input.templateId, {}, sessionOverride);
   const current = await prisma.templateNode.findFirstOrThrow({
     where: { id: input.nodeId, templateId: input.templateId }
   });
@@ -200,9 +226,9 @@ export async function updateTemplateNode(input: { templateId: string; nodeId: st
   return node;
 }
 
-export async function deleteTemplateNode(input: { templateId: string; nodeId: string }) {
-  const actor = await requireGM();
-  const { template } = await requireTemplateGM(input.templateId);
+export async function deleteTemplateNode(input: { templateId: string; nodeId: string }, sessionOverride?: Parameters<typeof requireGM>[0]) {
+  const actor = await requireGM(sessionOverride);
+  const { template } = await requireTemplateGM(input.templateId, {}, sessionOverride);
   const current = await prisma.templateNode.findFirstOrThrow({
     where: { id: input.nodeId, templateId: input.templateId }
   });

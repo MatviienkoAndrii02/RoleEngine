@@ -1,15 +1,14 @@
 "use server";
 
 import type { NodeType, Prisma } from "@prisma/client";
-import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireCharacterGM, requireGM, requirePrimaryWritableWorkspace } from "@/server/authz";
 import { writeAudit } from "@/server/audit";
 import { copyTemplateIntoCharacter, slugify } from "@/server/template-copy";
-import { reconcileStructuralEffects } from "@/server/structural-effects";
-import { runTriggeredCharacterEffects } from "@/server/triggered-effects";
+import { stabilizeCharacterEffects, stabilizeCharacterEffectsInTransaction } from "@/server/structural-effects";
 import { parseNodeData } from "@/domain/validation";
 import { collectSubtreeIds } from "@/domain/tree";
+import { safeRevalidatePath as revalidatePath } from "@/server/revalidate";
 import { appError } from "@/server/errors";
 import { DependencyEngine } from "@/engine/dependency-engine";
 import { parseCharacterNodeModels, parseEffectDefinitions } from "@/server/read-models";
@@ -263,34 +262,38 @@ export async function createCharacterNode(input: {
   const name = input.name.trim();
   if (!name) throw new Error("Node name is required");
   const data = parseNodeData(input.type, input.data) as Prisma.InputJsonValue;
-  const parent = input.parentId ? await prisma.characterNode.findFirstOrThrow({ where: { id: input.parentId, characterId: input.characterId, archivedAt: null } }) : null;
-  const count = await prisma.characterNode.count({ where: { characterId: input.characterId, parentId: input.parentId ?? null } });
-  const path = parent ? `${parent.path}/${slugify(name)}` : slugify(name);
-  const node = await prisma.characterNode.create({
-    data: {
-      characterId: input.characterId,
-      parentId: input.parentId,
-      type: input.type,
-      name,
-      slug: slugify(name),
-      path,
-      order: count,
-      data
-    }
-  });
+  const node = await prisma.$transaction(async (tx) => {
+    const parent = input.parentId ? await tx.characterNode.findFirstOrThrow({ where: { id: input.parentId, characterId: input.characterId, archivedAt: null } }) : null;
+    const count = await tx.characterNode.count({ where: { characterId: input.characterId, parentId: input.parentId ?? null } });
+    const path = parent ? `${parent.path}/${slugify(name)}` : slugify(name);
+    const created = await tx.characterNode.create({
+      data: {
+        characterId: input.characterId,
+        parentId: input.parentId,
+        type: input.type,
+        name,
+        slug: slugify(name),
+        path,
+        order: count,
+        data
+      }
+    });
 
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: character.workspaceId,
-    characterId: input.characterId,
-    entityType: "CharacterNode",
-    entityId: node.id,
-    action: "CREATE",
-    newValue: { name: node.name, type: node.type, data }
+    await writeAudit({
+      actorId: actor.id,
+      workspaceId: character.workspaceId,
+      characterId: input.characterId,
+      entityType: "CharacterNode",
+      entityId: created.id,
+      action: "CREATE",
+      newValue: { name: created.name, type: created.type, data }
+    }, tx);
+
+    await stabilizeCharacterEffectsInTransaction(tx, input.characterId, actor.id);
+    return created;
   });
 
   revalidatePath(`/characters/${input.characterId}`);
-  await stabilizeCharacterEffects(input.characterId, actor.id);
   return node;
 }
 
@@ -300,9 +303,9 @@ export async function updateCharacterNode(input: {
   name?: string;
   parentId?: string | null;
   data?: unknown;
-}) {
-  const actor = await requireGM();
-  const { character } = await requireCharacterGM(input.characterId);
+}, sessionOverride?: Parameters<typeof requireGM>[0]) {
+  const actor = await requireGM(sessionOverride);
+  const { character } = await requireCharacterGM(input.characterId, {}, sessionOverride);
   const current = await prisma.characterNode.findFirstOrThrow({
     where: { id: input.nodeId, characterId: input.characterId, archivedAt: null }
   });
@@ -346,28 +349,29 @@ export async function updateCharacterNode(input: {
         });
       }
     }
+
+    await writeAudit({
+      actorId: actor.id,
+      workspaceId: character.workspaceId,
+      characterId: current.characterId,
+      entityType: "CharacterNode",
+      entityId: current.id,
+      action: "UPDATE",
+      oldValue: { name: current.name, parentId: current.parentId, data: current.data },
+      newValue: { name: updated.name, parentId: updated.parentId, data: updated.data }
+    }, tx);
+
+    await stabilizeCharacterEffectsInTransaction(tx, current.characterId, actor.id);
     return updated;
   });
 
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: character.workspaceId,
-    characterId: current.characterId,
-    entityType: "CharacterNode",
-    entityId: current.id,
-    action: "UPDATE",
-    oldValue: { name: current.name, parentId: current.parentId, data: current.data },
-    newValue: { name: node.name, parentId: node.parentId, data: node.data }
-  });
-
   revalidatePath(`/characters/${current.characterId}`);
-  await stabilizeCharacterEffects(current.characterId, actor.id);
   return node;
 }
 
-export async function deleteCharacterNode(input: { characterId: string; nodeId: string }) {
-  const actor = await requireGM();
-  const { character } = await requireCharacterGM(input.characterId);
+export async function deleteCharacterNode(input: { characterId: string; nodeId: string }, sessionOverride?: Parameters<typeof requireGM>[0]) {
+  const actor = await requireGM(sessionOverride);
+  const { character } = await requireCharacterGM(input.characterId, {}, sessionOverride);
   const current = await prisma.characterNode.findFirstOrThrow({
     where: { id: input.nodeId, characterId: input.characterId, archivedAt: null }
   });
@@ -393,9 +397,9 @@ export async function deleteCharacterNode(input: { characterId: string; nodeId: 
         oldValue: { name: current.name, type: current.type, data: current.data, archivedNodeIds }
       }
     });
+    await stabilizeCharacterEffectsInTransaction(tx, current.characterId, actor.id);
   });
   revalidatePath(`/characters/${current.characterId}`);
-  await stabilizeCharacterEffects(current.characterId, actor.id);
 }
 
 export async function restoreCharacterNode(input: { characterId: string; nodeId: string }) {
@@ -432,11 +436,12 @@ export async function restoreCharacterNode(input: { characterId: string; nodeId:
         newValue: { archivedAt: null },
       }
     });
+
+    await stabilizeCharacterEffectsInTransaction(tx, input.characterId, actor.id);
   });
 
   revalidatePath("/");
   revalidatePath(`/characters/${input.characterId}`);
-  await stabilizeCharacterEffects(input.characterId, actor.id);
 }
 
 export async function applyTemplateToCharacter(input: {
@@ -462,26 +467,19 @@ export async function applyTemplateToCharacter(input: {
     ]);
     const check = new DependencyEngine(parseCharacterNodeModels(nodes).nodes, parseEffectDefinitions(effects).effects).evaluate();
     if (check.cycles.length) throw appError("DEPENDENCY_CYCLE", "Template bindings create a dependency cycle");
+    await writeAudit({
+      actorId: actor.id,
+      workspaceId: character.workspaceId,
+      characterId: input.characterId,
+      entityType: "EntityTemplate",
+      entityId: input.templateId,
+      action: "APPLY_TEMPLATE",
+      newValue: { copiedNodeIds: copied.copiedNodeIds, parentNodeId: input.parentNodeId, bindings: input.bindings ?? {} },
+    }, tx);
     return copied;
   });
   await stabilizeCharacterEffects(input.characterId, actor.id);
 
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: character.workspaceId,
-    characterId: input.characterId,
-    entityType: "EntityTemplate",
-    entityId: input.templateId,
-    action: "APPLY_TEMPLATE",
-    newValue: { copiedNodeIds: result.copiedNodeIds, parentNodeId: input.parentNodeId, bindings: input.bindings ?? {} }
-  });
-
   revalidatePath(`/characters/${input.characterId}`);
   return result;
-}
-
-async function stabilizeCharacterEffects(characterId: string, actorId: string) {
-  await reconcileStructuralEffects(characterId);
-  await runTriggeredCharacterEffects(characterId, actorId);
-  await reconcileStructuralEffects(characterId);
 }
