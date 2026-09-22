@@ -455,6 +455,28 @@ export const jsonIntegrityCommandSchema = z.discriminatedUnion("action", [
   }).strict(),
 ]);
 
+export const adminBackupStatusSchema = z.enum(["COMPLETED", "FAILED"]);
+
+// Persisted sidecar manifest for one backup dump file in the admin backup storage.
+export const adminBackupManifestSchema = z.object({
+  id: idSchema.max(120),
+  fileName: z.string().trim().min(1).max(200),
+  createdAt: z.iso.datetime(),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+  status: adminBackupStatusSchema,
+  appVersion: z.string().trim().max(200).nullable(),
+  appCommit: z.string().trim().max(200).nullable(),
+  schemaMigration: z.string().trim().max(300).nullable(),
+  createdById: z.string().trim().max(200).nullable(),
+  message: z.string().max(1_000).nullable(),
+}).strict();
+
+// Restore is destructive, so the request contract already requires an explicit
+// confirmation token even before a restore implementation exists.
+export const adminBackupRestoreRequestSchema = z.object({
+  confirm: z.literal("RESTORE"),
+}).strict();
+
 export type JsonIntegrityCommand = z.output<typeof jsonIntegrityCommandSchema>;
 
 export const deleteTemplateTagCommandSchema = z.object({

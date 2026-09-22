@@ -1,0 +1,12 @@
+{
+  "id": "pre-restore-2026-09-22-12-06-59",
+  "fileName": "pre-restore-2026-09-22-12-06-59.dump",
+  "createdAt": "2026-09-22T12:06:59.274Z",
+  "appVersion": null,
+  "appCommit": null,
+  "schemaMigration": "20260920081609_add_json_integrity_repair_codes",
+  "createdById": "cmrgd17he0000vyooomd1u5ra",
+  "sizeBytes": 65345,
+  "status": "COMPLETED",
+  "message": null
+}

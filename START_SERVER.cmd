@@ -37,7 +37,7 @@ if not exist "%NPX%" (
 )
 
 echo [1/6] Stopping anything currently listening on port %APP_PORT%...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$port=%APP_PORT%; $pids = @(Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique); foreach ($pid in $pids) { if ($pid -gt 0) { Write-Host ('Stopping PID ' + $pid); Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue } }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$port=%APP_PORT%; $pids = @(Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique); foreach ($processId in $pids) { if ($processId -gt 0) { Write-Host ('Stopping PID ' + $processId); Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue } }"
 if errorlevel 1 goto fail
 
 echo [2/6] Ensuring PostgreSQL is running...

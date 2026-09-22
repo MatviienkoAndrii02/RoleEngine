@@ -1,0 +1,12 @@
+{
+  "id": "backup-20260922t120555z-a6ac7565",
+  "fileName": "backup-20260922t120555z-a6ac7565.dump",
+  "createdAt": "2026-09-22T12:05:55.723Z",
+  "appVersion": null,
+  "appCommit": null,
+  "schemaMigration": "20260920081609_add_json_integrity_repair_codes",
+  "createdById": "cmrgd17he0000vyooomd1u5ra",
+  "sizeBytes": 65029,
+  "status": "COMPLETED",
+  "message": null
+}
