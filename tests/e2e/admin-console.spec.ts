@@ -35,6 +35,31 @@ test.describe("admin console", () => {
     expect(consoleResponse?.status()).toBe(404);
   });
 
+  test("serves the public-mode hardening headers and hides the console from search engines", async ({ page }) => {
+    const apiResponse = await page.request.get("/admin-api/health");
+    expect(apiResponse.headers()["x-frame-options"]).toBe("DENY");
+    expect(apiResponse.headers()["x-content-type-options"]).toBe("nosniff");
+    expect(apiResponse.headers()["referrer-policy"]).toBe("no-referrer");
+    expect(apiResponse.headers()["x-robots-tag"]).toContain("noindex");
+
+    const robots = await page.request.get("/robots.txt");
+    expect(robots.status()).toBe(200);
+    const robotsBody = await robots.text();
+    expect(robotsBody).toContain("/admin");
+    expect(robotsBody).toContain("/admin-api");
+  });
+
+  test("rejects cross-site admin mutations even with a valid administrator session", async ({ page }) => {
+    test.skip(!demoGmIsAdmin, "ADMIN_ACCOUNTS must include the demo GM account for this spec");
+
+    await loginAs(page, GM_IDENTIFIER);
+    const response = await page.request.post("/admin-api/backups", {
+      headers: { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
+    });
+    expect(response.status()).toBe(403);
+    expect((await response.json()).error).toBe("ADMIN_ORIGIN_NOT_ALLOWED");
+  });
+
   test("lets a configured administrator create, download and delete a backup", async ({ page }) => {
     test.skip(!demoGmIsAdmin, "ADMIN_ACCOUNTS must include the demo GM account for this spec");
 

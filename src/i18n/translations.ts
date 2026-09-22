@@ -78,6 +78,7 @@ export const translations = {
     "common.unknown": "Невідомо",
 
     "apiError.ADMIN_NETWORK_RESTRICTED": "Admin Console недоступна з цієї мережі.",
+    "apiError.ADMIN_ORIGIN_NOT_ALLOWED": "Запит до консолі надійшов з іншого сайту і був відхилений.",
     "apiError.BACKUP_CONFIGURATION_INVALID": "Конфігурація бекапів неповна або некоректна.",
     "apiError.BACKUP_CREATE_FAILED": "Не вдалося створити бекап.",
     "apiError.BACKUP_DELETE_FAILED": "Не вдалося видалити бекап.",
@@ -784,6 +785,7 @@ export const translations = {
     "common.unknown": "Unknown",
 
     "apiError.ADMIN_NETWORK_RESTRICTED": "The Admin Console is not reachable from this network.",
+    "apiError.ADMIN_ORIGIN_NOT_ALLOWED": "The console request came from another site and was rejected.",
     "apiError.BACKUP_CONFIGURATION_INVALID": "The backup configuration is incomplete or invalid.",
     "apiError.BACKUP_CREATE_FAILED": "The backup could not be created.",
     "apiError.BACKUP_DELETE_FAILED": "The backup could not be deleted.",

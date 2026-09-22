@@ -9,7 +9,7 @@
 /admin-api/*    Admin API (окремий backend namespace, не публічний)
 ```
 
-Публічний продукт (`/`, `/api/*`) не змінюється: `/admin-api` не перетинається з `/api`, тому наявна публічна маршрутизація не відкриває консоль автоматично.
+Публічний продукт (`/`, `/api/*`) працює як раніше, а admin paths публікуються свідомо окремими path-правилами (див. «Мережевий доступ»). `/admin-api` не перетинається з `/api`, тому випадкової публікації через продуктове правило `/api/*` не буває — потрібен явний маршрут.
 
 Business logic живе в `src/server/admin/*`, HTTP-адаптери — у `src/app/admin-api/*`, UI — у `src/app/admin/*` + `src/components/admin/*`. UI звертається лише до `/admin-api` (base налаштовується через `NEXT_PUBLIC_ADMIN_API_BASE`), тому frontend не є security boundary і не залежить від внутрішніх server-модулів.
 
@@ -39,39 +39,73 @@ ADMIN_ACCOUNTS="admin@example.com,<user-cuid>"
 
 HTTP-відповіді: без сесії — `401 UNAUTHORIZED`, звичайний користувач — `403 FORBIDDEN` (JSON envelope з `src/server/errors.ts`), non-admin сторінка `/admin` віддає `404`, щоб не розкривати існування консолі.
 
-## Мережевий доступ (LAN-only)
+## Мережевий доступ (LAN + Internet)
 
-У цьому репозиторії немає Docker Compose, Traefik або Cloudflare-конфігурації: наявна інфраструктура (`Cloudflare Tunnel → Traefik → Role Engine`) живе поза workspace. Тому network restriction реалізується на рівні наявного proxy/tunnel, а не в бізнес-логіці.
+Консоль підтримує обидва режими: роботу з локальної мережі та доступ з Internet через наявний proxy/tunnel. У репозиторії немає Docker Compose, Traefik або Cloudflare-конфігурації — маршрутизацію виконує інфраструктура оператора, а застосунок додає власні перевірки (authorization, origin guard для мутацій, опційний IP allowlist).
 
-**Застосувати на існуючій інфраструктурі (не автоматизовано цим репозиторієм):**
+### Режим A (підтримуваний): Internet через існуючий Cloudflare Tunnel
 
-1. `cloudflared` ingress має маршрутизувати лише `/` і `/api/*`. Catch-all `- service: http://traefik:80` без path-умови небезпечний — він відкриє `/admin*` у Internet. Якщо catch-all існує, додати перед ним явну відмову:
+`/admin` і `/admin-api` публікуються тими самими path-правилами, що й продукт. Приклад `cloudflared` ingress:
 
 ```yaml
 ingress:
   - hostname: roleengine.ddns.org
-    path: ^/api/
+    path: ^/(api|admin-api|admin)(/|$)
     service: http://traefik:80
-  - hostname: roleengine.ddns.org
-    path: ^/admin(-api)?/
-    service: http_status:404     # Admin ніколи не публікується
   - hostname: roleengine.ddns.org
     service: http://traefik:80
 ```
 
-2. Admin router у Traefik прив'язати до LAN entrypoint/мережі та `ipAllowList` (приклад динамічної конфігурації, застосовується оператором):
+Traefik: admin paths ідуть через той самий entrypoint, який бачить tunnel, з hardening і rate limit:
 
 ```yaml
 http:
   routers:
     role-engine-admin:
-      entryPoints: [lan]                       # окремий LAN entrypoint, не websecure з tunnel
+      entryPoints: [websecure]          # назва залежить від вашої конфігурації
+      rule: Host(`roleengine.ddns.org`) && (PathPrefix(`/admin`) || PathPrefix(`/admin-api`))
+      middlewares: [admin-hardening, admin-rate-limit]
+      service: role-engine
+  middlewares:
+    admin-hardening:
+      headers:
+        stsSeconds: 31536000
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: no-referrer
+    admin-rate-limit:
+      rateLimit:
+        average: 30
+        burst: 60
+        period: 1m
+```
+
+Публікація консолі допустима лише разом із цим мінімумом:
+
+1. **HTTPS only.** TLS термінується на Cloudflare/Traefik, `AUTH_TRUST_HOST=true`, сесійні cookie стають `Secure`. Прямий HTTP-доступ до консолі не відкривати.
+2. **`ADMIN_ALLOWED_IP_RANGES` має лишатися порожнім** — інакше app-level guard заблокує публічні запити (`403 ADMIN_NETWORK_RESTRICTED`).
+3. **`ADMIN_ACCOUNTS` — окремі ops-акаунти.** Не використовувати ігрові/демо-акаунти з коротким паролем; 2FA у застосунку немає.
+4. **Rate limiting на proxy** для `/admin*` і `/api/auth/*`: вбудований lockout у застосунку process-local і не захищає між інстансами.
+5. **Усвідомити наслідки:** авторизований адміністратор завантажує повний dump БД, а restore перезаписує поточну БД цілком.
+6. За потреби сильнішої межі ніж пароль — Cloudflare Access / mTLS перед консоллю; app-level authorization залишається обов'язковою в будь-якому разі.
+
+### Режим B (опційний): LAN-only
+
+Якщо консоль має бути недоступною з Internet, admin router прив'язується до LAN entrypoint і `ipAllowList`, а публічний ingress явно відмовляє для admin paths:
+
+```yaml
+# cloudflared: перед catch-all, якщо він існує
+  - hostname: roleengine.ddns.org
+    path: ^/admin(-api)?/
+    service: http_status:404
+
+# traefik
+http:
+  routers:
+    role-engine-admin:
+      entryPoints: [lan]
       rule: Host(`roleengine.ddns.org`) && (PathPrefix(`/admin`) || PathPrefix(`/admin-api`))
       middlewares: [admin-lan-only]
-      service: role-engine
-    role-engine-public:
-      entryPoints: [websecure]
-      rule: Host(`roleengine.ddns.org`) && (Path(`/`) || PathPrefix(`/api`))
       service: role-engine
   middlewares:
     admin-lan-only:
@@ -79,9 +113,9 @@ http:
         sourceRange: ["127.0.0.1/32", "192.168.0.0/16", "10.0.0.0/8"]
 ```
 
-3. Публічний tunnel не змінюється: admin routes просто не мають публічного router'а.
+### App-level guard (defense-in-depth)
 
-**Опційний app-level guard (defense-in-depth):** `ADMIN_ALLOWED_IP_RANGES` (`10.0.0.0/8,192.168.0.0/16,127.0.0.1/32,::1`) + `ADMIN_IP_HEADER` (за замовчуванням `x-forwarded-for`) дозволяють застосунку самому відхиляти запити поза LAN. Якщо змінна не задана, guard неактивний і єдиною мережевою межею залишається proxy — саме тому ці змінні не замінюють кроки 1–2. Guard fail closed: невідома адреса клієнта, непідтримуваний формат (наприклад IPv6 CIDR) або адреса поза списком дають `403 ADMIN_NETWORK_RESTRICTED`. Заголовок довіряється лише тому, що застосунок не доступний напряму з Internet.
+`ADMIN_ALLOWED_IP_RANGES` (`10.0.0.0/8,192.168.0.0/16,127.0.0.1/32,::1`) + `ADMIN_IP_HEADER` (default `x-forwarded-for`) змушують застосунок самому відхиляти запити поза списком. Guard недоступний, якщо змінна порожня (тоді межа — proxy). Guard fail closed: невідома адреса клієнта, непідтримуваний формат (наприклад IPv6 CIDR) або адреса поза списком дають `403 ADMIN_NETWORK_RESTRICTED`. Для публічного режиму (A) змінну треба залишити порожньою; для LAN-only (B) вона є другою межею після proxy.
 
 ## Безпека: огляд меж
 
@@ -90,8 +124,10 @@ http:
 * **IDOR / arbitrary files**: клієнт передає лише `backupId`, який має відповідати `^[a-z0-9][a-z0-9-]{7,79}$`; storage додатково перевіряє ім'я файлу та те, що resolved path лежить усередині storage root. Download/delete працюють лише з `<id>.dump` і `<id>.json`.
 * **Command execution**: єдина зовнішня команда — `pg_dump` через `spawn` без shell; аргументи фіксовані, `--file` вказує на server-generated шлях у storage, `schema` приймається лише як plain identifier, password передається через env.
 * **SQL**: єдиний raw query — статичний `SELECT` із `_prisma_migrations` без інтерполяції input.
-* **CSRF**: cookie сесії `SameSite=Lax`, тому cross-site POST/DELETE не надсилає сесію; admin API відповідає лише same-origin запитам UI (крос-доменний доступ потребуватиме явного CORS, якого зараз немає). Restore навіть за наявності сесії вимагає confirmation token у тілі.
-* **Public static**: dump-файли лежать у `ADMIN_BACKUP_DIR` поза `public/`, не роздаються статично і не комітяться (`backups` у `.gitignore`).
+* **CSRF / cross-site**: усі admin-мутації (`POST`, `DELETE`) проходять `assertAdminMutationOrigin()`: запит із чужим `Origin` або `Sec-Fetch-Site: cross-site` відхиляється `403 ADMIN_ORIGIN_NOT_ALLOWED`. Порівнюється хост (не схема), бо TLS термінується на proxy; non-browser клієнти без цих заголовків допускаються лише з валідною admin-сесією. Restore додатково вимагає confirmation token у тілі.
+* **Headers / індексація**: `next.config.ts` додає `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow` на `/admin*` і `/admin-api*`; `robots.txt` (`src/app/robots.ts`) закриває ті самі шляхи для краулерів.
+* **Residual ризики публічного режиму**: brute-force пароля admin-акаунта (вбудований lockout лише process-local), відсутність 2FA, будь-який адміністратор може завантажити повний dump БД, restore стирає поточні дані. Для зменшення — окремі ops-акаунти, rate limiting на proxy, Cloudflare Access/mTLS за потреби.
+* **Public static**: dump-файли лежать у `ADMIN_BACKUP_DIR` поза `public/`, не роздаються статично і не комітяться (`backups` та `.PG_backups` у `.gitignore`).
 * **Помилки**: повідомлення pg_dump/DB проходять через `redactSecrets` (пароль зникає), тому в UI і manifest не потрапляють credentials.
 
 ## Backups
@@ -126,7 +162,7 @@ Storage seam (`src/server/admin/backup-storage.ts`) дозволяє замін�
 | GET | `/admin-api/backups/{backupId}/download` | завантажити dump |
 | POST | `/admin-api/backups/{backupId}/restore` | відновити БД з dump-у (requires `{ "confirm": "RESTORE" }`) |
 
-Помилки повертаються як `{ "error": "CODE", "message": "...", "details"?: ... }`; успішні відповіді мають `Cache-Control: no-store`.
+Помилки повертаються як `{ "error": "CODE", "message": "...", "details"?: ... }`; успішні відповіді мають `Cache-Control: no-store`. `POST` і `DELETE` вимагають same-origin запиту (див. «Безпека»); `GET /admin-api/backups/{backupId}/download` лишається звичайним GET-стримом.
 
 ## UI
 
@@ -139,10 +175,58 @@ Storage seam (`src/server/admin/backup-storage.ts`) дозволяє замін�
 | `ADMIN_ACCOUNTS` | email/id адміністраторів консолі (обов'язково для доступу) |
 | `ADMIN_BACKUP_DIR` | директорія backups (default `<cwd>/backups`) |
 | `ADMIN_PG_DUMP_PATH` | шлях до `pg_dump` (default `pg_dump` з PATH) |
-| `ADMIN_ALLOWED_IP_RANGES` | опційний LAN allowlist (IPv4/CIDR + точні IPv6 літерали) |
+| `ADMIN_PG_RESTORE_PATH` | шлях до `pg_restore` (default: sibling налаштованого `pg_dump`, інакше PATH) |
+| `ADMIN_ALLOWED_IP_RANGES` | опційний IP allowlist; для публічного доступу лишити порожнім |
 | `ADMIN_IP_HEADER` | заголовок із client IP (default `x-forwarded-for`) |
 | `APP_VERSION`, `APP_COMMIT` | опційні метадані застосунку для dashboard і manifest |
 | `NEXT_PUBLIC_ADMIN_API_BASE` | base path/URL admin API для UI (default `/admin-api`) |
+
+### Приклади значень
+
+У `.env` значення в лапках парсяться як JSON-рядок, тому Windows-бекслеші треба подвоювати (або використовувати прямі слеші). Найпростіший робочий варіант (LAN + Internet, PostgreSQL 18 на Windows, backups поруч із `.pgdata`):
+
+```dotenv
+# Логін адміна: email або account id, через кому. Без цього консоль закрита для всіх.
+ADMIN_ACCOUNTS="gm@role.local"
+
+# Куди писати dump-и та manifest-и. Каталог створюється автоматично.
+# Подвоєні бекслеші або прямі слеші — обидва варіанти валідні.
+ADMIN_BACKUP_DIR="C:\\Users\\matwa\\Documents\\Role Engine\\.PG_backups"
+# ADMIN_BACKUP_DIR="/var/lib/role-engine/backups"
+
+# Абсолютний шлях до pg_dump, якщо його немає в PATH (типово для Windows).
+ADMIN_PG_DUMP_PATH="C:\\Program Files\\PostgreSQL\\18\\bin\\pg_dump.exe"
+# ADMIN_PG_DUMP_PATH="/usr/lib/postgresql/18/bin/pg_dump"
+
+# Не обов'язково: якщо не вказано, береться pg_restore з тієї ж теки, що й pg_dump.
+ADMIN_PG_RESTORE_PATH="C:\\Program Files\\PostgreSQL\\18\\bin\\pg_restore.exe"
+
+# Порожньо = доступ дозволено з будь-якої мережі (публічний режим).
+# Для LAN-only: "127.0.0.1/32,192.168.0.0/16,::1"
+ADMIN_ALLOWED_IP_RANGES=""
+```
+
+Linux/macOS:
+
+```dotenv
+ADMIN_ACCOUNTS="ops@example.com,cm1234567890abcdef"
+ADMIN_BACKUP_DIR="/var/lib/role-engine/backups"
+ADMIN_PG_DUMP_PATH="/usr/lib/postgresql/18/bin/pg_dump"
+ADMIN_PG_RESTORE_PATH="/usr/lib/postgresql/18/bin/pg_restore"
+ADMIN_ALLOWED_IP_RANGES=""
+```
+
+Якщо `pg_dump`/`pg_restore` є в PATH, обидві `*_PATH`-змінні можна не задавати взагалі. Перевірка, що все підхоплено:
+
+```powershell
+# Windows: показати, які шляхи бачить процес
+Get-Content .env | Select-String 'ADMIN_'
+
+# реальний pg_dump + manifest + audit проти налаштованої БД
+npx tsx scripts/admin-backup-check.ts
+```
+
+Після зміни `.env` перезапустити `npm run dev`/`npm start`: env читається під час старту процесу.
 
 ## Перевірка
 
@@ -152,7 +236,11 @@ npx tsx --test "src/server/admin/**/*.test.ts" "src/app/admin-api/**/*.test.ts"
 # реальний pg_dump проти налаштованої БД (потрібні DATABASE_URL, ADMIN_PG_DUMP_PATH)
 npx tsx scripts/admin-backup-check.ts
 
-# E2E: перші два сценарії працюють завжди, третій — лише коли ADMIN_ACCOUNTS містить gm@role.local
+# перевірка restore pipeline (pg_restore --list, safety backup, write barrier)
+npx tsx scripts/admin-restore-check.ts
+
+# E2E: сценарії auth/403/headers/robots працюють завжди, admin-flow — лише коли
+# ADMIN_ACCOUNTS містить gm@role.local
 npx playwright test tests/e2e/admin-console.spec.ts
 ```
 

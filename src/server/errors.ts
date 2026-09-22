@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export const apiErrorCodes = [
   "ADMIN_NETWORK_RESTRICTED",
+  "ADMIN_ORIGIN_NOT_ALLOWED",
   "BAD_REQUEST",
   "BACKUP_CONFIGURATION_INVALID",
   "BACKUP_CREATE_FAILED",
