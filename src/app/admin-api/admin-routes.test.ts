@@ -282,4 +282,59 @@ describe("admin api authorization and envelopes", () => {
     assert.equal(response.status, 400);
     assert.equal((await response.json() as { error: string }).error, "BAD_REQUEST");
   });
+
+  it("rejects cross-site admin mutations even for a valid administrator session", async () => {
+    const crossSiteHeaders = { origin: "https://evil.example", host: "roleengine.ddns.org" };
+    const url = "https://roleengine.ddns.org/admin-api/backups";
+
+    const created = await createAdminBackupRoute(new Request(url, { method: "POST", headers: crossSiteHeaders }), {
+      ...backupDependencies,
+      requirePlatformAdmin: allow,
+    });
+    assert.equal(created.status, 403);
+    assert.equal((await created.json() as { error: string }).error, "ADMIN_ORIGIN_NOT_ALLOWED");
+
+    const deleted = await deleteAdminBackupRoute(
+      new Request(`${url}/${backupRecord.id}`, { method: "DELETE", headers: crossSiteHeaders }),
+      { params: Promise.resolve({ backupId: backupRecord.id }) },
+      { requirePlatformAdmin: allow, deleteBackup: async () => backupRecord },
+    );
+    assert.equal(deleted.status, 403);
+    assert.equal((await deleted.json() as { error: string }).error, "ADMIN_ORIGIN_NOT_ALLOWED");
+
+    const restored = await restoreAdminBackupRoute(
+      new Request(`${url}/${backupRecord.id}/restore`, {
+        method: "POST",
+        headers: { ...crossSiteHeaders, "content-type": "application/json" },
+        body: JSON.stringify({ confirm: "RESTORE" }),
+      }),
+      { params: Promise.resolve({ backupId: backupRecord.id }) },
+      {
+        requirePlatformAdmin: allow,
+        restoreBackup: async () => {
+          throw new Error("cross-site restore must never reach the restore service");
+        },
+      },
+    );
+    assert.equal(restored.status, 403);
+    assert.equal((await restored.json() as { error: string }).error, "ADMIN_ORIGIN_NOT_ALLOWED");
+  });
+
+  it("accepts the same-origin mutations the console UI performs", async () => {
+    const sameOriginHeaders = { origin: "https://roleengine.ddns.org", host: "roleengine.ddns.org" };
+    const url = "https://roleengine.ddns.org/admin-api/backups";
+
+    const created = await createAdminBackupRoute(new Request(url, {
+      method: "POST",
+      headers: { ...sameOriginHeaders, "sec-fetch-site": "same-origin" },
+    }), { ...backupDependencies, requirePlatformAdmin: allow });
+    assert.equal(created.status, 201);
+
+    const deleted = await deleteAdminBackupRoute(
+      new Request(`${url}/${backupRecord.id}`, { method: "DELETE", headers: sameOriginHeaders }),
+      { params: Promise.resolve({ backupId: backupRecord.id }) },
+      { requirePlatformAdmin: allow, deleteBackup: async () => backupRecord },
+    );
+    assert.equal(deleted.status, 200);
+  });
 });

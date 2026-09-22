@@ -29,13 +29,13 @@ Every mutation writes an `AuditLog` entry with actor, entity, old value, new val
 
 ## Admin Console
 
-`/admin` (UI) and `/admin-api` (backend namespace) host the operations console: dashboard with real system/database health, health details, and database backups. Details, configuration and the LAN-only exposure checklist live in [docs/ADMIN_CONSOLE.md](docs/ADMIN_CONSOLE.md).
+`/admin` (UI) and `/admin-api` (backend namespace) host the operations console: dashboard with real system/database health, health details, and database backups. Details, configuration and the exposure modes live in [docs/ADMIN_CONSOLE.md](docs/ADMIN_CONSOLE.md).
 
 Access reuses existing accounts through the `ADMIN_ACCOUNTS` allowlist (emails or account ids); there is no second user system and no workspace role grants ops access. Every admin route and every admin API request is authorized on the server — the UI is not a security boundary.
 
-Backups are created with `pg_dump`, stored in a controlled directory (`ADMIN_BACKUP_DIR`, default `./backups`), listed with metadata, downloadable as a streamed attachment and deletable with confirmation. Restore is intentionally not implemented: the POST endpoint exists as a documented seam and always answers `501`.
+Backups are created with `pg_dump`, stored in a controlled directory (`ADMIN_BACKUP_DIR`, default `./backups`), listed with metadata, downloadable as a streamed attachment, deletable with confirmation, and restorable through a POST action that requires typing a confirmation token and takes a safety backup first.
 
-The console must stay reachable from LAN/internal networks only. The public Cloudflare Tunnel keeps serving `/` and `/api/*`; `/admin*` must not be routed publicly. Network enforcement belongs to the proxy (see the checklist in `docs/ADMIN_CONSOLE.md`), with `ADMIN_ALLOWED_IP_RANGES` available as optional defence-in-depth.
+The console runs in two supported modes: reachable from the LAN only (proxy `ipAllowList`, with `ADMIN_ALLOWED_IP_RANGES` as optional defence-in-depth) or reachable from the internet through the existing Cloudflare Tunnel. Public mode requires the hardening checklist from `docs/ADMIN_CONSOLE.md`: HTTPS only, separate ops accounts, proxy rate limiting, no IP allowlist configured, and awareness that an administrator can download a full database dump or overwrite the database with a restore.
 
 ## First Run
 
