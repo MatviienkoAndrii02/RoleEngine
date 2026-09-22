@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { inspectNodeRecord } from "@/domain/json-integrity";
 import { parseCharacterNodeModels, parseEffectDefinitions } from "@/server/read-models";
 
 describe("read model parsers", () => {
@@ -61,5 +62,31 @@ describe("read model parsers", () => {
     assert.equal(result.effects[0]?.id, "valid");
     assert.equal(result.diagnostics.length, 1);
     assert.equal(result.diagnostics[0]?.entityId, "invalid");
+  });
+
+  it("keeps repaired values that satisfy the domain schema", () => {
+    const finding = inspectNodeRecord({
+      entityType: "CharacterNode",
+      type: "NUMBER",
+      data: { value: "12", max: "20" },
+    });
+
+    assert.equal(finding.strategy, "repair");
+    assert.ok(finding.repairedValue !== undefined);
+    const parsed = parseCharacterNodeModels([
+      {
+        id: "repaired",
+        parentId: null,
+        type: "NUMBER",
+        name: "Strength",
+        path: "strength",
+        order: 0,
+        data: finding.repairedValue,
+      },
+    ]);
+    assert.equal(parsed.diagnostics.length, 0);
+    const repaired = parsed.nodes[0];
+    if (!repaired || !("value" in repaired.data)) throw new Error("expected repaired number node");
+    assert.equal(repaired.data.value, 12);
   });
 });

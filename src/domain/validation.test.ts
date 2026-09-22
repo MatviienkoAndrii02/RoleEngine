@@ -16,6 +16,9 @@ import {
   updateNodeCommandSchema,
   updateEffectCommandSchema,
   updateCharacterCommandSchema,
+  jsonIntegrityCommandSchema,
+  adminBackupManifestSchema,
+  adminBackupRestoreRequestSchema,
 } from "@/domain/validation";
 
 test("accepts valid Unicode number node data", () => {
@@ -394,4 +397,55 @@ test("registration username preserves case while validating allowed characters",
     username: "Міра",
     password: "demo1234",
   }));
+});
+
+test("validates json integrity command envelopes", () => {
+  assert.equal(jsonIntegrityCommandSchema.parse({ action: "repair" }).action, "repair");
+  assert.equal(jsonIntegrityCommandSchema.parse({ action: "quarantine" }).action, "quarantine");
+  const resolved = jsonIntegrityCommandSchema.parse({ action: "resolve", entryId: "entry_1", resolution: "release" });
+  assert.equal(resolved.action, "resolve");
+  assert.throws(() => jsonIntegrityCommandSchema.parse({ action: "purge" }));
+  assert.throws(() => jsonIntegrityCommandSchema.parse({ action: "resolve", entryId: "", resolution: "release" }));
+});
+
+test("validates admin backup manifests", () => {
+  const manifest = {
+    id: "backup-20260921t020000z-abcd1234",
+    fileName: "backup-20260921t020000z-abcd1234.dump",
+    createdAt: "2026-09-21T02:00:00.000Z",
+    sizeBytes: 4096,
+    status: "COMPLETED",
+    appVersion: null,
+    appCommit: null,
+    schemaMigration: "20260101000000_init",
+    createdById: "user_1",
+    message: null,
+  };
+
+  assert.equal(adminBackupManifestSchema.parse(manifest).status, "COMPLETED");
+  assert.equal(adminBackupManifestSchema.parse({ ...manifest, sizeBytes: null, status: "FAILED" }).status, "FAILED");
+  assert.throws(() => adminBackupManifestSchema.parse({ ...manifest, status: "PENDING" }));
+  assert.throws(() => adminBackupManifestSchema.parse({ ...manifest, sizeBytes: -1 }));
+  assert.throws(() => adminBackupManifestSchema.parse({ ...manifest, createdAt: "not-a-date" }));
+  assert.throws(() => adminBackupManifestSchema.parse({ ...manifest, extra: "field" }));
+});
+
+test("requires an explicit confirmation token for backup restore requests", () => {
+  assert.equal(adminBackupRestoreRequestSchema.parse({ confirm: "RESTORE" }).confirm, "RESTORE");
+  assert.throws(() => adminBackupRestoreRequestSchema.parse({}));
+  assert.throws(() => adminBackupRestoreRequestSchema.parse({ confirm: "restore" }));
+  assert.throws(() => adminBackupRestoreRequestSchema.parse({ confirm: "RESTORE", force: true }));
+});
+
+test("rejects restore bodies that try to smuggle paths, connections or commands", () => {
+  for (const body of [
+    { confirm: "RESTORE", path: "/etc/passwd" },
+    { confirm: "RESTORE", archivePath: "../../backup.dump" },
+    { confirm: "RESTORE", connectionString: "postgresql://user:pass@host/db" },
+    { confirm: "RESTORE", command: "pg_restore --clean" },
+    { confirm: "RESTORE", executable: "cmd.exe" },
+    { confirm: "RESTORE", backupId: "backup-20260921t020000z-abcd1234" },
+  ]) {
+    assert.throws(() => adminBackupRestoreRequestSchema.parse(body), (error: unknown) => error instanceof Error, JSON.stringify(body));
+  }
 });

@@ -22,7 +22,8 @@
     "test:errors": "tsx --test src/server/errors.test.ts",
     "test:read-models": "tsx --test src/server/read-models.test.ts",
     "test:validation": "tsx --test src/domain/validation.test.ts",
-    "test:template-copy": "tsx --test src/server/template-copy.test.ts"
+    "test:template-copy": "tsx --test src/server/template-copy.test.ts",
+    "integrity:audit": "tsx scripts/json-integrity-audit.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",

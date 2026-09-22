@@ -8,11 +8,13 @@ import { prisma } from "@/lib/prisma";
 import { requirePageGM } from "@/server/page-auth";
 import { requireTemplateGM } from "@/server/authz";
 import { resolveLocalNodeLinks } from "@/server/node-links";
+import { getJsonIntegrityReport } from "@/server/json-integrity";
 import { parseEffectDefinitions, parseTemplateNodeModels, type PersistedJsonDiagnostic } from "@/server/read-models";
 import { CharacterTree } from "@/components/characters/character-tree";
 import { NodeEditor } from "@/components/characters/node-editor";
 import { EffectComposer } from "@/components/characters/effect-composer";
 import { EffectManager } from "@/components/characters/effect-manager";
+import { JsonIntegrityPanel } from "@/components/characters/json-integrity-panel";
 import { SidebarSection } from "@/components/characters/sidebar-section";
 import { TemplateForm } from "@/components/templates/template-form";
 import { TemplateSlotManager } from "@/components/templates/template-slot-manager";
@@ -46,6 +48,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ templ
   });
   const parsedNodes = parseTemplateNodeModels(template.nodes);
   const parsedEffects = parseEffectDefinitions(template.effects);
+  const jsonIntegrity = await getJsonIntegrityReport({ kind: "template", templateId: template.id });
   const diagnostics = [...parsedNodes.diagnostics, ...parsedEffects.diagnostics];
   const nodes = parsedNodes.nodes;
   const linkedNodes = resolveLocalNodeLinks(nodes, t("node.linkUnavailable"));
@@ -69,6 +72,12 @@ export default async function TemplatePage({ params }: { params: Promise<{ templ
         moreLabel={t("diagnostics.moreInvalid", { count: diagnostics.length - Math.min(diagnostics.length, 5) })}
       />
     )}
+    <JsonIntegrityPanel
+      scopeKind="template"
+      scopeId={template.id}
+      entries={jsonIntegrity.entries}
+      quarantine={jsonIntegrity.quarantine}
+    />
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
       <Card>
         <CardHeader>

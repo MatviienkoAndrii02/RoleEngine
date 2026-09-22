@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, LayoutDashboard, LogOut } from "lucide-react";
+import { BookOpen, LayoutDashboard, LogOut, ShieldCheck } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -8,6 +8,7 @@ import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 import { I18nProvider } from "@/i18n/client";
 import { getTranslator } from "@/i18n/server";
 import { getActiveWorkspace } from "@/server/authz";
+import { isPlatformAdminAccount } from "@/server/admin/authz";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,6 +21,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const { language, t } = await getTranslator();
   const activeWorkspace = session?.user?.id ? await getActiveWorkspace(session.user.id) : null;
   const hasWritableWorkspace = Boolean(activeWorkspace?.canWrite);
+  // Navigation hint only: the Admin Console authorizes every request on the server.
+  const isPlatformAdmin = session?.user?.id
+    ? isPlatformAdminAccount({ id: session.user.id, email: session.user.email ?? null })
+    : false;
   return (
     <html lang={language}>
       <body>
@@ -42,6 +47,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     </Link>
                   </>}
                   <div className="ml-2 flex items-center gap-2 border-l pl-4">
+                    {isPlatformAdmin && (
+                      <Link
+                        className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 hover:bg-muted"
+                        href="/admin"
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        {t("admin.title")}
+                      </Link>
+                    )}
                     <WorkspaceSwitcher userId={session.user.id} />
                     <LanguageSwitcher />
                     <div className="hidden text-right sm:block">

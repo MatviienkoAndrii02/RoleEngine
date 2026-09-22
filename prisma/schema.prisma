@@ -93,12 +93,12 @@ model Workspace {
   archivedAt DateTime?
   metadata   Json      @default("{}")
 
-  owner       User?                 @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  memberships WorkspaceMembership[]
-  characters  Character[]
-  templates   EntityTemplate[]
+  owner        User?                 @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  memberships  WorkspaceMembership[]
+  characters   Character[]
+  templates    EntityTemplate[]
   templateTags TemplateTag[]
-  auditLogs   AuditLog[]
+  auditLogs    AuditLog[]
 
   @@index([ownerId])
   @@index([name])
@@ -232,8 +232,8 @@ model EntityTemplate {
   archivedAt         DateTime?
   metadata           Json         @default("{}")
 
-  workspace Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
-  createdBy User?          @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  workspace Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  createdBy User?               @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
   nodes     TemplateNode[]
   effects   Effect[]
   slots     TemplateSlot[]
@@ -381,4 +381,39 @@ model AuditLog {
   @@index([workspaceId, createdAt])
   @@index([actorId, createdAt])
   @@index([entityType, entityId])
+}
+
+enum JsonIntegrityStatus {
+  ACTIVE
+  REPAIRED
+  RELEASED
+}
+
+// Scope-less JSON contracts (entityType/entityId) deliberately use plain text
+// with a composite unique key so legacy/orphan rows can still be quarantined.
+model JsonIntegrityQuarantine {
+  id           String              @id @default(cuid())
+  workspaceId  String?
+  characterId  String?
+  templateId   String?
+  entityType   String
+  entityId     String
+  entityName   String
+  field        String
+  strategy     String
+  status       JsonIntegrityStatus @default(ACTIVE)
+  reasons      Json                @default("[]")
+  repairable   Boolean             @default(false)
+  repairs      Json                @default("[]")
+  rawValue     Json?
+  detectedById String?
+  detectedAt   DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  resolvedAt   DateTime?
+  resolvedById String?
+
+  @@unique([entityType, entityId, field])
+  @@index([workspaceId, status])
+  @@index([characterId, status])
+  @@index([templateId, status])
 }
