@@ -88,6 +88,23 @@ export type AdminOverviewResponse = {
 
 export type AdminHealthResponse = AdminHealthSnapshot;
 
+export type AdminLogsSource = "app" | "worker" | "all";
+
+export type AdminLogEntry = {
+  timestamp: string;
+  service: string;
+  level: "debug" | "info" | "warn" | "error";
+  event: string | null;
+  message: string;
+};
+
+export type AdminLogsResponse = {
+  generatedAt: string;
+  range: "15m" | "1h" | "6h" | "24h";
+  source: AdminLogsSource;
+  logs: AdminLogEntry[];
+};
+
 export type AdminBackupListResponse = {
   storage: AdminBackupStorageInfo;
   backups: AdminBackupRecord[];
@@ -133,6 +150,18 @@ export function isAdminHealthSnapshot(value: unknown): value is AdminHealthSnaps
     && isRecord(value.cpu)
     && isRecord(value.memory)
     && isRecord(value.backupTool);
+}
+
+export function isAdminLogsResponse(value: unknown): value is AdminLogsResponse {
+  if (!isRecord(value) || typeof value.generatedAt !== "string" || !Array.isArray(value.logs)) return false;
+  if (value.source !== "app" && value.source !== "worker" && value.source !== "all") return false;
+  if (value.range !== "15m" && value.range !== "1h" && value.range !== "6h" && value.range !== "24h") return false;
+  return value.logs.every((entry: unknown) => isRecord(entry)
+    && typeof entry.timestamp === "string"
+    && typeof entry.service === "string"
+    && (entry.level === "debug" || entry.level === "info" || entry.level === "warn" || entry.level === "error")
+    && (entry.event === null || typeof entry.event === "string")
+    && typeof entry.message === "string");
 }
 
 export function isAdminOverviewResponse(value: unknown): value is AdminOverviewResponse {

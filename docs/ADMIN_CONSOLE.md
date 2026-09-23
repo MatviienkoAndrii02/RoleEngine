@@ -1,6 +1,6 @@
 # Admin Console
 
-Операційна консоль Role Engine: огляд стану, health-перевірки та резервні копії БД. Це частина того самого modular monolith, але з окремими route namespace, окремим authorization boundary і storage-абстракцією, щоб у майбутньому винести її на інший domain/контейнер без переписування.
+Операційна консоль Role Engine: огляд стану, health-перевірки, логи та резервні копії БД. Це частина того самого modular monolith, але з окремими route namespace, окремим authorization boundary і storage-абстракціями, щоб у майбутньому винести її на інший domain/контейнер без переписування.
 
 ## Межі
 
@@ -18,6 +18,8 @@ flowchart LR
   UI[Admin UI /admin] -->|fetch| API[Admin API /admin-api]
   API --> AUTHZ[requirePlatformAdmin]
   API --> HEALTH[health service]
+  API --> LOGS[logs service]
+  LOGS --> LOKI[(Loki, internal network)]
   API --> BACKUP[backup service]
   BACKUP --> STORAGE[backup storage seam]
   STORAGE --> FS[(backup directory)]
@@ -174,7 +176,15 @@ Worker не запускається автоматично всередині N
 
 ## UI
 
-`/admin` (Dashboard: System + Backup), `/admin/backups` (list/create/download/delete з confirmation, loading і локалізованими помилками), `/admin/health` (детальні перевірки), а також `/admin/metrics`, `/admin/logs`, `/admin/database` — явні placeholders без вигаданих значень. Значення, які backend не може безпечно виміряти (наприклад load average на Windows, відсутній disk stat), показуються як "Not available".
+`/admin` (Dashboard: System + Backup), `/admin/backups` (list/create/download/delete з confirmation, loading і локалізованими помилками), `/admin/health` (детальні перевірки), `/admin/logs` (останні логи застосунку та backup worker-а через Loki), а також `/admin/metrics` і `/admin/database` (placeholders). Значення, які backend не може безпечно виміряти (наприклад load average на Windows, відсутній disk stat), показуються як "Not available".
+
+## Логи
+
+Застосунок виводить структуровані JSON-події в stdout/stderr: необроблені помилки запитів Next.js, API-помилки 5xx, створення/помилки бекапів і роботу backup worker-а. Поля з назвами `password`, `secret`, `token`, `authorization`, `cookie`, `database_url` і `connection_string` редагуються logger-ом; повідомлення та stack trace необроблених помилок не записуються. `AuditLog` лишається окремою історією продуктових змін.
+
+`GET /admin-api/logs` вимагає `requirePlatformAdmin()`, приймає лише фіксовані періоди `15m`, `1h`, `6h`, `24h` та джерела `app`, `worker`, `all`, обмежує відповідь 200 записами та робить запит до `ADMIN_LOKI_URL` лише на сервері. Browser не отримує адресу Loki. Loki не має власної авторизації в цій single-node конфігурації, тому його HTTP-порт не публікується назовні та доступний лише через внутрішню Docker-мережу; захищений проксі до нього — `/admin-api/logs`.
+
+Для Ubuntu приклади Loki/Alloy конфігурації та Compose інтеграції — у `docs/OBSERVABILITY_UBUNTU.md`. Alloy читає Docker logs через Docker API, тому має чутливий доступ до Docker daemon socket; не монтувати socket у Role Engine web/worker контейнери й не відкривати його через мережу. Для обмеження локального розміру Docker logs увімкнути logging driver `local` або явну ротацію.
 
 ## Конфігурація
 
@@ -186,6 +196,7 @@ Worker не запускається автоматично всередині N
 | `ADMIN_PG_RESTORE_PATH` | шлях до `pg_restore` (default: sibling налаштованого `pg_dump`, інакше PATH) |
 | `ADMIN_ALLOWED_IP_RANGES` | опційний IP allowlist; для публічного доступу лишити порожнім |
 | `ADMIN_IP_HEADER` | заголовок із client IP (default `x-forwarded-for`) |
+| `ADMIN_LOKI_URL` | внутрішня base URL Loki (наприклад `http://loki:3100`); потрібна для вкладки логів |
 | `APP_VERSION`, `APP_COMMIT` | опційні метадані застосунку для dashboard і manifest |
 | `NEXT_PUBLIC_ADMIN_API_BASE` | base path/URL admin API для UI (default `/admin-api`) |
 | `BACKUP_POLL_SECONDS` | частота перевірки активності, default `60` |

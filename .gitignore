@@ -3,6 +3,7 @@ node_modules
 .env
 *.md
 !docs/AUTOMATED_BACKUPS_UBUNTU.md
+!docs/OBSERVABILITY_UBUNTU.md
 .pgdata
 test-results
 debug.log

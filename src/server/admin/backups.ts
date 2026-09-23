@@ -16,6 +16,7 @@ import { getAppCommit, getAppVersion, getDatabaseUrl, getPgDumpExecutable, getPg
 import { beginDatabaseMaintenance, endDatabaseMaintenance } from "@/server/admin/database-maintenance";
 import { parseDatabaseConnection, runPgDump, runPgRestore, verifyPgRestoreArchive } from "@/server/admin/pg-tools";
 import { redactSecrets } from "@/server/admin/redact";
+import { logEvent } from "@/server/logger";
 
 export const adminBackupEntityType = "AdminBackup";
 export const adminRestoreEntityType = "AdminBackupRestore";
@@ -126,6 +127,7 @@ export async function createBackup(input: BackupCreateInput, runtime: Partial<Ba
     const record: AdminBackupRecord = { ...base, sizeBytes, status: "COMPLETED", message: null };
     await storage.writeJson(manifestFileName, record);
     await recordAudit("CREATE", record, input.actorId);
+    logEvent("info", "admin.backup_created", { backupId: id, sizeBytes, createdById: input.actorId });
     return record;
   } catch (error) {
     try {
@@ -139,6 +141,11 @@ export async function createBackup(input: BackupCreateInput, runtime: Partial<Ba
     } catch {
       // The original failure is the actionable error; a lost failure manifest must not mask it.
     }
+    logEvent("error", "admin.backup_failed", {
+      backupId: id,
+      errorCode: normalizeApiError(error).code,
+      errorType: error instanceof Error ? error.name : "UnknownError",
+    });
     throw error;
   }
 }
@@ -385,7 +392,7 @@ async function writeRestoreAudit(entry: RestoreAuditEntry): Promise<void> {
       metadata: { operation: entry.operation, errorCode: entry.errorCode, errorDetail: entry.errorDetail },
     });
   } catch (error) {
-    console.error("admin restore audit entry could not be persisted", redactSecrets(normalizeApiError(error).code, []));
+    logEvent("error", "admin.restore_audit_persist_failed", { errorCode: normalizeApiError(error).code });
   }
 }
 
@@ -393,23 +400,20 @@ async function recordRestoreAudit(runtime: RestoreRuntime, entry: RestoreAuditEn
   try {
     await runtime.recordAudit(entry);
   } catch (error) {
-    console.error("admin restore audit callback failed", redactSecrets(normalizeApiError(error).code, []));
+    logEvent("error", "admin.restore_audit_callback_failed", { errorCode: normalizeApiError(error).code });
   }
 }
 
 // Single-line operational record: no pid, no host, no credentials, no shell command. Tool output is
 // redacted and truncated before it reaches the log or the audit row.
 function logRestoreEvent(entry: RestoreAuditEntry): void {
-  console.info(JSON.stringify({
-    event: entry.operation,
+  logEvent("info", `admin.${entry.operation}`, {
     backupId: entry.backupId,
-    actorId: entry.actorId,
     safetyBackupId: entry.safetyBackupId,
     durationMs: entry.durationMs,
     errorCode: entry.errorCode,
     errorDetail: entry.errorDetail,
-    at: new Date().toISOString(),
-  }));
+  });
 }
 
 function describeRestoreFailure(error: unknown): string {

@@ -3,6 +3,9 @@ import path from "node:path";
 import { prisma } from "../src/lib/prisma";
 import { createBackup, listBackups, deleteBackup } from "../src/server/admin/backups";
 import { getAdminBackupDirectory } from "../src/server/admin/config";
+import { logEvent } from "../src/server/logger";
+
+process.env.LOG_SERVICE_NAME = process.env.LOG_SERVICE_NAME?.trim() || "role-engine-backup";
 
 const pollMs = positiveInteger(process.env.BACKUP_POLL_SECONDS, 60) * 1_000;
 const activeMinutes = positiveInteger(process.env.BACKUP_ACTIVE_WINDOW_MINUTES, 10);
@@ -22,13 +25,13 @@ type State = { lastBackupAt: string | null; lastDailyDate: string | null };
 async function main() {
   await fs.mkdir(getAdminBackupDirectory(), { recursive: true });
   let state = await readState();
-  console.info("Automated backup worker started", { activeMinutes, frequentMinutes, retentionDays, dailyHour, dailyMinute });
+  logEvent("info", "backup_worker.started", { activeMinutes, frequentMinutes, retentionDays, dailyHour, dailyMinute });
   while (!stopping) {
     try {
       state = await runCycle(state, new Date());
       await writeState(state);
     } catch (error) {
-      console.error("Automated backup cycle failed", error);
+      logEvent("error", "backup_worker.cycle_failed", { errorType: error instanceof Error ? error.name : "UnknownError" });
     }
     await delay(pollMs);
   }
@@ -42,7 +45,7 @@ async function runCycle(state: State, now: Date): Promise<State> {
     await createBackup({ actorId: null });
     state = { ...state, lastBackupAt: now.toISOString(), lastDailyDate: today };
     await writeState(state);
-    console.info("Daily backup completed", { at: now.toISOString() });
+    logEvent("info", "backup_worker.daily_backup_completed", { at: now.toISOString() });
   }
 
   const latestMutation = await getLatestRelevantMutation();
@@ -52,7 +55,7 @@ async function runCycle(state: State, now: Date): Promise<State> {
       await createBackup({ actorId: null });
       state = { ...state, lastBackupAt: now.toISOString() };
       await writeState(state);
-      console.info("Activity backup completed", { at: now.toISOString() });
+      logEvent("info", "backup_worker.activity_backup_completed", { at: now.toISOString() });
     }
   }
 
@@ -61,7 +64,7 @@ async function runCycle(state: State, now: Date): Promise<State> {
     backup.status === "COMPLETED" && !backup.id.startsWith("backup-safety-") && new Date(backup.createdAt).getTime() < cutoff,
   );
   for (const backup of oldBackups) await deleteBackup({ backupId: backup.id, actorId: null });
-  if (oldBackups.length) console.info("Expired backups removed", { count: oldBackups.length, retentionDays });
+  if (oldBackups.length) logEvent("info", "backup_worker.retention_applied", { count: oldBackups.length, retentionDays });
   return state;
 }
 
@@ -111,7 +114,7 @@ function delay(ms: number) {
 }
 
 void main().catch((error: unknown) => {
-  console.error("Automated backup worker stopped", error);
+  logEvent("error", "backup_worker.stopped", { errorType: error instanceof Error ? error.name : "UnknownError" });
   process.exitCode = 1;
 }).finally(async () => {
   if (stopping) await prisma.$disconnect();
