@@ -150,6 +150,14 @@ Admin UI → Admin API → backup service → backup storage (local dir) → pg_
 
 Storage seam (`src/server/admin/backup-storage.ts`) дозволяє замінити local filesystem на MinIO/S3 без змін API та UI.
 
+### Автоматичні backups
+
+`npm run backup:worker` запускає окремий довгоживучий процес, який використовує той самий backup service і `pg_dump`, що й Admin Console. Він перевіряє `AuditLog` раз на хвилину: якщо за останні 10 хвилин була продуктова зміна персонажа, вузла, шаблону, ефекту, слота/тега шаблону або призначення, створює backup не частіше ніж раз на 5 хвилин. Щодня о 06:00 за локальним часовим поясом процес створює окремий контрольний backup незалежно від активності. Параметри задаються змінними нижче; інтервал частих копій можна виставити 10 хвилин.
+
+Worker кожен цикл видаляє завершені backups старше 7 днів разом із manifest-файлами. Safety backups із `backup-safety-` retention не видаляє. Статус розкладу зберігається в `.automation-state.json` у backup directory, тому саму директорію треба монтувати на постійний volume. AuditLog має зберігатися в БД; якщо його очищати, контроль активності бачить лише доступні записи.
+
+Worker не запускається автоматично всередині Next.js web process: у production запускайте його як окремий сервіс/контейнер, щоб web replicas не створювали дубльовані копії. Приклад змінних та Docker Compose service наведено в `docs/AUTOMATED_BACKUPS_UBUNTU.md`. Поточний репозиторій не містить Dockerfile/Compose, тому сервіс треба додати до наявної deployment-конфігурації, використовуючи той самий image, мережу, env-файл і backup volume, що й застосунок.
+
 ## Ендпоінти
 
 | Метод | Шлях | Призначення |
@@ -180,6 +188,11 @@ Storage seam (`src/server/admin/backup-storage.ts`) дозволяє замін�
 | `ADMIN_IP_HEADER` | заголовок із client IP (default `x-forwarded-for`) |
 | `APP_VERSION`, `APP_COMMIT` | опційні метадані застосунку для dashboard і manifest |
 | `NEXT_PUBLIC_ADMIN_API_BASE` | base path/URL admin API для UI (default `/admin-api`) |
+| `BACKUP_POLL_SECONDS` | частота перевірки активності, default `60` |
+| `BACKUP_ACTIVE_WINDOW_MINUTES` | скільки хвилин після останньої зміни вважати систему активною, default `10` |
+| `BACKUP_ACTIVE_INTERVAL_MINUTES` | мінімальний інтервал між activity backups, default `5` |
+| `BACKUP_DAILY_HOUR` / `BACKUP_DAILY_MINUTE` | локальний час контрольної копії, default `06:00` |
+| `BACKUP_RETENTION_DAYS` | retention завершених автоматичних копій, default `7` |
 
 ### Приклади значень
 
