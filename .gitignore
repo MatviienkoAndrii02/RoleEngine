@@ -2,7 +2,9 @@ node_modules
 .next
 .env
 *.md
+!docs/AUTOMATED_BACKUPS_UBUNTU.md
 .pgdata
 test-results
 debug.log
 *.log
+.PG_backups

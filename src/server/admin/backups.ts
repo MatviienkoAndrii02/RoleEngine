@@ -27,7 +27,7 @@ const partialExtension = ".dump.part";
 export type BackupRuntime = {
   storage: AdminBackupStorage;
   runDump: (input: { databaseUrl: string; executable: string; targetPath: string }) => Promise<{ sizeBytes: number }>;
-  recordAudit: (action: "CREATE" | "DELETE", record: AdminBackupRecord, actorId: string) => Promise<void>;
+  recordAudit: (action: "CREATE" | "DELETE", record: AdminBackupRecord, actorId: string | null) => Promise<void>;
 };
 
 export type BackupDownload = {
@@ -82,7 +82,7 @@ export function describeBackupStorage(storage: AdminBackupStorage = getBackupSto
 // Internal marker that marks a dump as part of the restore procedure (the safety backup), so it is
 // not rejected by the restore-in-flight guard in createBackup. Not part of the public input type.
 export const restoreBypassFlag = "__restoreSafetyBypass__";
-type BackupCreateInput = { actorId: string; backupId?: string; [restoreBypassFlag]?: boolean };
+type BackupCreateInput = { actorId: string | null; backupId?: string; [restoreBypassFlag]?: boolean };
 
 export async function createBackup(input: BackupCreateInput, runtime: Partial<BackupRuntime> = {}): Promise<AdminBackupRecord> {
   // A user-triggered dump must not start while a restore is rebuilding the schema: pg_dump would
@@ -143,7 +143,7 @@ export async function createBackup(input: BackupCreateInput, runtime: Partial<Ba
   }
 }
 
-export async function deleteBackup(input: { backupId: string; actorId: string }, runtime: Partial<BackupRuntime> = {}): Promise<AdminBackupRecord> {
+export async function deleteBackup(input: { backupId: string; actorId: string | null }, runtime: Partial<BackupRuntime> = {}): Promise<AdminBackupRecord> {
   const { storage, recordAudit } = resolveRuntime(runtime);
   const backupId = assertSafeBackupId(input.backupId);
   const record = (await listBackups({ storage })).find((entry) => entry.id === backupId);
@@ -458,7 +458,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-async function writeBackupAudit(action: "CREATE" | "DELETE", record: AdminBackupRecord, actorId: string) {
+async function writeBackupAudit(action: "CREATE" | "DELETE", record: AdminBackupRecord, actorId: string | null) {
   await writeAudit({
     actorId,
     entityType: adminBackupEntityType,
