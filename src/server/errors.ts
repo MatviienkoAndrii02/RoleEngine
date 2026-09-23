@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { logEvent } from "@/server/logger";
 
 export const apiErrorCodes = [
   "ADMIN_NETWORK_RESTRICTED",
+  "ADMIN_LOGS_UNAVAILABLE",
   "ADMIN_ORIGIN_NOT_ALLOWED",
   "BAD_REQUEST",
   "BACKUP_CONFIGURATION_INVALID",
@@ -90,6 +92,13 @@ export function forbidden() {
 
 export function apiErrorResponse(error: unknown) {
   const normalized = normalizeApiError(error);
+  if (normalized.status >= 500) {
+    logEvent("error", "api.request_failed", {
+      errorCode: normalized.code,
+      status: normalized.status,
+      errorType: error instanceof Error ? error.name : "UnknownError",
+    });
+  }
   const body: ApiErrorBody = {
     error: normalized.code,
     message: normalized.message,
