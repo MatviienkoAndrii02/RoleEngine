@@ -50,7 +50,7 @@ type TriggerKind = "condition" | "nodeClick";
 
 const numericOperations: Operation[] = ["ADD", "SUBTRACT", "MULTIPLY", "PERCENT_BONUS", "SET_BAR_MAX"];
 const structuralOperations: Operation[] = ["CREATE_NODE", "CREATE_GROUP", "PATCH_NODE_PROPS"];
-const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
+const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER"];
 const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
 
 export function EffectManager({ characterId, nodes, archivedNodes = [], effects, rootLabel, slots = [] }: { characterId?: string; nodes: CharacterNodeModel[]; archivedNodes?: CharacterNodeModel[]; effects: EffectItem[]; title?: string; rootLabel?: string; slots?: TemplateSlotModel[] }) {
@@ -474,7 +474,6 @@ function CreatedNodeFields({ payload, operation, type, setType }: { payload?: Ef
           <textarea name="createdText" defaultValue={String(data.text ?? "")} className="min-h-28 w-full resize-y rounded-md border bg-background p-3 text-sm" />
         </Labeled>
       )}
-      {actualType === "GROUP" && <Field label={t("node.groupColor")} name="createdColor" defaultValue={String(data.color ?? "teal")} />}
     </div>
   );
 }

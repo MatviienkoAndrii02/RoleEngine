@@ -27,7 +27,7 @@ export type TriggeredActionRow = {
 
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 const numericActions = ["SET", "ADD", "SUBTRACT", "MULTIPLY"] as const;
-const creatableNodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP", "LINK"];
+const creatableNodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "LINK"];
 const commonNumericFields: PatchFieldDefinition[] = [
   { field: "value", labelKey: "common.value", kind: "number", derived: false },
   { field: "min", labelKey: "node.minimum", kind: "number", derived: false },

@@ -25,7 +25,7 @@ export type LinkableCharacterOption = {
   name: string;
 };
 
-const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP", "LINK"];
+const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "LINK"];
 
 function readDraftNodeType(values: FormDraftValues): NodeType | null {
   const value = stringDraftValue(values, "type");
@@ -167,7 +167,7 @@ function NodeForm({ draftKey, nodes, active, selectedParentId, rootLabel, pendin
 }) {
   const { t } = useI18n();
   const formRef = useRef<HTMLFormElement>(null);
-  const initialType = active?.type ?? "NUMBER";
+  const initialType = active?.type === "GROUP" ? "CONTAINER" : active?.type ?? "NUMBER";
   const [type, setType] = useState<NodeType>(initialType);
   const { restored, clearDraft, formDraftProps } = useFormDraft({
     draftKey,
@@ -302,8 +302,7 @@ function DataFields({
       </div>
     );
   }
-  if (type === "CONTAINER") return null;
-  return <FormField label={t("node.groupColor")} name="color" defaultValue={String(value?.color ?? "teal")} />;
+  return null;
 }
 
 function FormField({ label, ...props }: React.ComponentProps<typeof Input> & { label: string }) {
@@ -341,8 +340,7 @@ function readNodeData(type: NodeType, form: FormData): NodeData {
     if (targetKind === "character") return { ...common, targetKind, targetCharacterId: String(form.get("targetCharacterId") ?? "") };
     return { ...common, targetKind, targetNodeId: String(form.get("targetNodeId") ?? "") };
   }
-  if (type === "CONTAINER") return common;
-  return { ...common, color: String(form.get("color") ?? "teal") };
+  return common;
 }
 
 function readIcon(value: FormDataEntryValue | null): NodeIconName | undefined {

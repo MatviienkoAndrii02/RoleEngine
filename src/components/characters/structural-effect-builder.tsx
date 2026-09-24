@@ -27,7 +27,7 @@ type StructuralEffectBuilderProps =
   | { characterId: string; templateId?: never; nodes: CharacterNodeModel[]; slots?: never }
   | { templateId: string; characterId?: never; nodes: CharacterNodeModel[]; slots?: TemplateSlotModel[] };
 
-const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP"];
+const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER"];
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 
 export function StructuralEffectBuilder({ characterId, templateId, nodes, slots = [] }: StructuralEffectBuilderProps) {
