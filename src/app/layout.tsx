@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { BookOpen, ChevronDown, LayoutDashboard, LogOut, Menu, ShieldCheck } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 import { UserPresenceHeartbeat } from "@/components/admin/user-presence-heartbeat";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 import { I18nProvider } from "@/i18n/client";
 import { getTranslator } from "@/i18n/server";
 import { getActiveWorkspace, getRequestWorkspaceId, requireUserWorkspace } from "@/server/authz";
@@ -19,6 +21,8 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
+  const themeCookie = (await cookies()).get("role-engine-theme")?.value;
+  const initialDark = themeCookie === "dark";
   const { language, t } = await getTranslator();
   const requestWorkspaceId = await getRequestWorkspaceId();
   const activeWorkspace = session?.user?.id
@@ -33,7 +37,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     : false;
   const accountLabel = session?.user?.name ?? session?.user?.email ?? "";
   return (
-    <html lang={language}>
+    <html lang={language} className={initialDark ? "dark" : undefined}>
       <body>
         <I18nProvider initialLanguage={language}>
           {session?.user && <UserPresenceHeartbeat />}
@@ -66,6 +70,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                       <div className="mt-3 grid gap-3 border-t pt-3">
                         <WorkspaceSwitcher userId={session.user.id} />
                         <LanguageSwitcher />
+                        <ThemeSwitcher initialDark={initialDark} />
                         <form action={async () => {
                           "use server";
                           await signOut({ redirectTo: "/login" });
@@ -101,6 +106,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     )}
                     <WorkspaceSwitcher userId={session.user.id} />
                     <LanguageSwitcher />
+                    <ThemeSwitcher initialDark={initialDark} compact />
                     <div className="text-right">
                       <div className="max-w-40 truncate text-xs font-medium">{session.user.name ?? session.user.email}</div>
                     </div>
@@ -115,7 +121,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   </div>
                   </nav>
                 </>}
-                {!session?.user && <LanguageSwitcher />}
+                {!session?.user && <>
+                  <LanguageSwitcher />
+                  <ThemeSwitcher initialDark={initialDark} compact />
+                </>}
               </div>
             </header>
             <main className="mx-auto w-full min-w-0 max-w-7xl px-3 py-4 sm:px-6 sm:py-6" data-workspace-context={activeWorkspace?.id}>{children}</main>

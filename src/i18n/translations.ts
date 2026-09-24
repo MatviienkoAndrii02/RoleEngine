@@ -40,6 +40,8 @@ export const translations = {
     "workspace.error.workspaceNotFound": "Workspace не знайдено або вже видалено.",
     "workspace.error.generic": "Не вдалося оновити учасників workspace.",
     "language.label": "Мова",
+    "theme.switchToDark": "Увімкнути темну тему",
+    "theme.switchToLight": "Увімкнути світлу тему",
     "language.uk": "Українська",
     "language.en": "English",
 
@@ -777,6 +779,8 @@ export const translations = {
     "workspace.error.workspaceNotFound": "Workspace was not found or has already been deleted.",
     "workspace.error.generic": "Could not update workspace members.",
     "language.label": "Language",
+    "theme.switchToDark": "Switch to dark theme",
+    "theme.switchToLight": "Switch to light theme",
     "language.uk": "Українська",
     "language.en": "English",
 

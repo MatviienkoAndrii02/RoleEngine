@@ -2,7 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  * {
+    @apply border-border;
+  }
+}
+
 :root {
+  color-scheme: light;
   --background: 42 20% 97%;
   --foreground: 220 17% 13%;
   --card: 0 0% 100%;
@@ -20,6 +27,63 @@
   --border: 214 14% 86%;
   --input: 214 14% 86%;
   --ring: 178 54% 26%;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: 222 24% 10%;
+  --foreground: 210 20% 94%;
+  --card: 222 21% 14%;
+  --card-foreground: 210 20% 94%;
+  --primary: 174 52% 48%;
+  --primary-foreground: 222 24% 10%;
+  --secondary: 220 17% 22%;
+  --secondary-foreground: 210 20% 94%;
+  --muted: 220 17% 20%;
+  --muted-foreground: 215 13% 67%;
+  --accent: 34 72% 55%;
+  --accent-foreground: 222 24% 10%;
+  --destructive: 0 63% 58%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 220 15% 20%;
+  --input: 220 15% 24%;
+  --ring: 174 52% 48%;
+}
+
+/* Keep fixed status and warning utilities readable on the dark surface palette. */
+.dark .bg-emerald-50,
+.dark .bg-emerald-50\/70,
+.dark .bg-emerald-100 {
+  background-color: hsl(158 55% 15%);
+}
+
+.dark .text-emerald-900 {
+  color: hsl(152 65% 82%);
+}
+
+.dark .border-emerald-200,
+.dark .border-emerald-300 {
+  border-color: hsl(158 42% 32%);
+}
+
+.dark .bg-amber-50,
+.dark .bg-amber-50\/70,
+.dark .bg-amber-100 {
+  background-color: hsl(35 58% 17%);
+}
+
+.dark .text-amber-950,
+.dark .text-amber-900 {
+  color: hsl(42 90% 82%);
+}
+
+.dark .text-amber-600 {
+  color: hsl(38 92% 65%);
+}
+
+.dark .border-amber-200,
+.dark .border-amber-300 {
+  border-color: hsl(35 50% 34%);
 }
 
 body {
