@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireCharacterGM, requireGM, requirePrimaryWritableWorkspace } from "@/server/authz";
 import { writeAudit } from "@/server/audit";
 import { copyTemplateIntoCharacter, slugify } from "@/server/template-copy";
-import { stabilizeCharacterEffects, stabilizeCharacterEffectsInTransaction } from "@/server/structural-effects";
+import { stabilizeCharacterEffectsInTransaction } from "@/server/structural-effects";
 import { parseNodeData } from "@/domain/validation";
 import { collectSubtreeIds } from "@/domain/tree";
 import { safeRevalidatePath as revalidatePath } from "@/server/revalidate";
@@ -66,10 +66,9 @@ export async function createCharacter(input: {
         newValue: { name, ownerId: input.ownerId ?? null, templateId: input.templateId ?? null }
       }
     });
+    await stabilizeCharacterEffectsInTransaction(tx, created.id, actor.id);
     return created;
   });
-
-  await stabilizeCharacterEffects(character.id, actor.id);
   revalidatePath("/");
   return character;
 }
@@ -476,9 +475,9 @@ export async function applyTemplateToCharacter(input: {
       action: "APPLY_TEMPLATE",
       newValue: { copiedNodeIds: copied.copiedNodeIds, parentNodeId: input.parentNodeId, bindings: input.bindings ?? {} },
     }, tx);
+    await stabilizeCharacterEffectsInTransaction(tx, input.characterId, actor.id);
     return copied;
   });
-  await stabilizeCharacterEffects(input.characterId, actor.id);
 
   revalidatePath(`/characters/${input.characterId}`);
   return result;

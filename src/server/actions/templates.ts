@@ -47,7 +47,7 @@ export async function createTemplate(input: {
         });
       }
 
-      return tx.entityTemplate.create({
+      const created = await tx.entityTemplate.create({
         data: {
           kind,
           workspaceId,
@@ -58,19 +58,19 @@ export async function createTemplate(input: {
           createdById: actor.id
         }
       });
+      await writeAudit({
+        actorId: actor.id,
+        workspaceId,
+        entityType: "EntityTemplate",
+        entityId: created.id,
+        action: "CREATE",
+        newValue: { name },
+      }, tx);
+      return created;
     });
   } catch (error) {
     rejectDuplicateDefaultTemplate(error);
   }
-
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId,
-    entityType: "EntityTemplate",
-    entityId: template.id,
-    action: "CREATE",
-    newValue: { name }
-  });
 
   revalidatePath("/templates");
   return template;
@@ -88,29 +88,15 @@ export async function createTemplateNode(input: {
   const name = input.name.trim();
   if (!name) throw new Error("Node name is required");
   const data = parseNodeData(input.type, input.data) as Prisma.InputJsonValue;
-  const parent = input.parentId ? await prisma.templateNode.findFirstOrThrow({ where: { id: input.parentId, templateId: input.templateId } }) : null;
-  const count = await prisma.templateNode.count({ where: { templateId: input.templateId, parentId: input.parentId ?? null } });
-  const path = parent ? `${parent.path}/${slugify(name)}` : slugify(name);
-  const node = await prisma.templateNode.create({
-    data: {
-      templateId: input.templateId,
-      parentId: input.parentId,
-      type: input.type,
-      name,
-      slug: slugify(name),
-      path,
-      order: count,
-      data
-    }
-  });
-
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: template.workspaceId,
-    entityType: "TemplateNode",
-    entityId: node.id,
-    action: "CREATE",
-    newValue: { name: input.name, type: input.type, data }
+  const node = await prisma.$transaction(async (tx) => {
+    const parent = input.parentId ? await tx.templateNode.findFirstOrThrow({ where: { id: input.parentId, templateId: input.templateId } }) : null;
+    const count = await tx.templateNode.count({ where: { templateId: input.templateId, parentId: input.parentId ?? null } });
+    const path = parent ? `${parent.path}/${slugify(name)}` : slugify(name);
+    const created = await tx.templateNode.create({
+      data: { templateId: input.templateId, parentId: input.parentId, type: input.type, name, slug: slugify(name), path, order: count, data }
+    });
+    await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "TemplateNode", entityId: created.id, action: "CREATE", newValue: { name, type: input.type, data } }, tx);
+    return created;
   });
 
   revalidatePath("/templates");
@@ -126,12 +112,13 @@ export async function updateTemplate(input: { templateId: string; name?: string;
   try {
     template = await withWorkspaceDefaultTemplateLock(current.workspaceId ?? "", async (tx) => {
       if (input.isDefaultCharacter) await tx.entityTemplate.updateMany({ where: { workspaceId: current.workspaceId, isDefaultCharacter: true }, data: { isDefaultCharacter: false } });
-      return tx.entityTemplate.update({ where: { id: input.templateId }, data: { name, description: input.description !== undefined ? input.description.trim() || null : undefined, isDefaultCharacter: input.isDefaultCharacter } });
+      const updated = await tx.entityTemplate.update({ where: { id: input.templateId }, data: { name, description: input.description !== undefined ? input.description.trim() || null : undefined, isDefaultCharacter: input.isDefaultCharacter } });
+      await writeAudit({ actorId: actor.id, workspaceId: current.workspaceId, entityType: "EntityTemplate", entityId: updated.id, action: "UPDATE", oldValue: { name: current.name, description: current.description }, newValue: { name: updated.name, description: updated.description } }, tx);
+      return updated;
     });
   } catch (error) {
     rejectDuplicateDefaultTemplate(error);
   }
-  await writeAudit({ actorId: actor.id, workspaceId: current.workspaceId, entityType: "EntityTemplate", entityId: template.id, action: "UPDATE", oldValue: { name: current.name, description: current.description }, newValue: { name: template.name, description: template.description } });
   revalidatePath("/templates");
   revalidatePath(`/templates/${template.id}`);
   return template;
@@ -139,25 +126,30 @@ export async function updateTemplate(input: { templateId: string; name?: string;
 
 export async function archiveTemplate(templateId: string) {
   const actor = await requireGM();
-  await requireTemplateGM(templateId);
-  const template = await prisma.entityTemplate.update({ where: { id: templateId }, data: { archivedAt: new Date(), isDefaultCharacter: false } });
-  await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "EntityTemplate", entityId: template.id, action: "DELETE", oldValue: { name: template.name, kind: template.kind } });
+  const { template: current } = await requireTemplateGM(templateId);
+  await prisma.$transaction(async (tx) => {
+    const template = await tx.entityTemplate.update({ where: { id: templateId }, data: { archivedAt: new Date(), isDefaultCharacter: false } });
+    await writeAudit({ actorId: actor.id, workspaceId: current.workspaceId, entityType: "EntityTemplate", entityId: template.id, action: "DELETE", oldValue: { name: current.name, kind: current.kind } }, tx);
+  });
   revalidatePath("/templates");
 }
 
 export async function restoreTemplate(templateId: string) {
   const actor = await requireGM();
   const { template: current } = await requireTemplateGM(templateId, { archived: "archived" });
-  const template = await prisma.entityTemplate.update({ where: { id: templateId }, data: { archivedAt: null } });
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: template.workspaceId,
-    entityType: "EntityTemplate",
-    entityId: template.id,
-    action: "UPDATE",
-    fieldPath: "archivedAt",
-    oldValue: { name: current.name, archivedAt: current.archivedAt },
-    newValue: { archivedAt: null },
+  const template = await prisma.$transaction(async (tx) => {
+    const restored = await tx.entityTemplate.update({ where: { id: templateId }, data: { archivedAt: null } });
+    await writeAudit({
+      actorId: actor.id,
+      workspaceId: current.workspaceId,
+      entityType: "EntityTemplate",
+      entityId: restored.id,
+      action: "UPDATE",
+      fieldPath: "archivedAt",
+      oldValue: { name: current.name, archivedAt: current.archivedAt },
+      newValue: { archivedAt: null },
+    }, tx);
+    return restored;
   });
   revalidatePath("/templates");
   revalidatePath(`/templates/${template.id}`);
@@ -219,9 +211,9 @@ export async function updateTemplateNode(input: { templateId: string; nodeId: st
       const descendants = await tx.templateNode.findMany({ where: { templateId: current.templateId, id: { in: descendantIds } } });
       for (const descendant of descendants) await tx.templateNode.update({ where: { id: descendant.id }, data: { path: `${nextPath}${descendant.path.slice(current.path.length)}` } });
     }
+    await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "TemplateNode", entityId: updated.id, action: "UPDATE", oldValue: { name: current.name, parentId: current.parentId, data: current.data }, newValue: { name: updated.name, parentId: updated.parentId, data: updated.data } }, tx);
     return updated;
   });
-  await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "TemplateNode", entityId: node.id, action: "UPDATE", oldValue: { name: current.name, parentId: current.parentId, data: current.data }, newValue: { name: node.name, parentId: node.parentId, data: node.data } });
   revalidatePath(`/templates/${current.templateId}`);
   return node;
 }
@@ -232,8 +224,10 @@ export async function deleteTemplateNode(input: { templateId: string; nodeId: st
   const current = await prisma.templateNode.findFirstOrThrow({
     where: { id: input.nodeId, templateId: input.templateId }
   });
-  await prisma.templateNode.delete({ where: { id: input.nodeId } });
-  await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "TemplateNode", entityId: input.nodeId, action: "DELETE", oldValue: { name: current.name, type: current.type, data: current.data } });
+  await prisma.$transaction(async (tx) => {
+    await tx.templateNode.delete({ where: { id: input.nodeId } });
+    await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "TemplateNode", entityId: input.nodeId, action: "DELETE", oldValue: { name: current.name, type: current.type, data: current.data } }, tx);
+  });
   revalidatePath(`/templates/${current.templateId}`);
 }
 
@@ -241,25 +235,16 @@ export async function createTemplateTag(input: { templateId: string; name: strin
   const actor = await requireGM();
   const { template } = await requireTemplateGM(input.templateId);
   if (!template.workspaceId) throw appError("FORBIDDEN", "Global templates cannot create workspace tags");
+  const workspaceId = template.workspaceId;
   const name = input.name.trim();
   if (!name) throw new Error("Template tag name is required");
   const color = parseTemplateTagColor(input.color);
-  const tag = await prisma.templateTag.create({
-    data: {
-      workspaceId: template.workspaceId,
-      name,
-      color,
-      createdById: actor.id,
-      templates: { create: { templateId: template.id } },
-    },
-  });
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: template.workspaceId,
-    entityType: "TemplateTag",
-    entityId: tag.id,
-    action: "CREATE",
-    newValue: { name: tag.name, color: tag.color, templateId: template.id },
+  const tag = await prisma.$transaction(async (tx) => {
+    const created = await tx.templateTag.create({
+      data: { workspaceId, name, color, createdById: actor.id, templates: { create: { templateId: template.id } } },
+    });
+    await writeAudit({ actorId: actor.id, workspaceId, entityType: "TemplateTag", entityId: created.id, action: "CREATE", newValue: { name: created.name, color: created.color, templateId: template.id } }, tx);
+    return created;
   });
   revalidatePath("/templates");
   revalidatePath(`/templates/${template.id}`);
@@ -274,21 +259,10 @@ export async function updateTemplateTag(input: { templateId: string; tagId: stri
   });
   const name = input.name?.trim();
   if (input.name !== undefined && !name) throw new Error("Template tag name is required");
-  const updated = await prisma.templateTag.update({
-    where: { id: input.tagId },
-    data: {
-      name,
-      color: input.color ? parseTemplateTagColor(input.color) : undefined,
-    },
-  });
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: template.workspaceId,
-    entityType: "TemplateTag",
-    entityId: updated.id,
-    action: "UPDATE",
-    oldValue: { name: current.name, color: current.color },
-    newValue: { name: updated.name, color: updated.color },
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.templateTag.update({ where: { id: input.tagId }, data: { name, color: input.color ? parseTemplateTagColor(input.color) : undefined } });
+    await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "TemplateTag", entityId: changed.id, action: "UPDATE", oldValue: { name: current.name, color: current.color }, newValue: { name: changed.name, color: changed.color } }, tx);
+    return changed;
   });
   revalidatePath("/templates");
   revalidatePath(`/templates/${template.id}`);
@@ -324,19 +298,9 @@ export async function assignTemplateTag(input: { templateId: string; tagId: stri
   const tag = await prisma.templateTag.findFirstOrThrow({
     where: { id: input.tagId, workspaceId: template.workspaceId ?? "__global__", archivedAt: null },
   });
-  await prisma.entityTemplateTag.upsert({
-    where: { templateId_tagId: { templateId: template.id, tagId: tag.id } },
-    update: {},
-    create: { templateId: template.id, tagId: tag.id },
-  });
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: template.workspaceId,
-    entityType: "EntityTemplate",
-    entityId: template.id,
-    action: "UPDATE",
-    fieldPath: "tags",
-    newValue: { action: "assign", tagId: tag.id, name: tag.name },
+  await prisma.$transaction(async (tx) => {
+    await tx.entityTemplateTag.upsert({ where: { templateId_tagId: { templateId: template.id, tagId: tag.id } }, update: {}, create: { templateId: template.id, tagId: tag.id } });
+    await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "EntityTemplate", entityId: template.id, action: "UPDATE", fieldPath: "tags", newValue: { action: "assign", tagId: tag.id, name: tag.name } }, tx);
   });
   revalidatePath("/templates");
   revalidatePath(`/templates/${template.id}`);
@@ -349,15 +313,9 @@ export async function unassignTemplateTag(input: { templateId: string; tagId: st
   const tag = await prisma.templateTag.findFirstOrThrow({
     where: { id: input.tagId, workspaceId: template.workspaceId ?? "__global__" },
   });
-  await prisma.entityTemplateTag.deleteMany({ where: { templateId: template.id, tagId: tag.id } });
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: template.workspaceId,
-    entityType: "EntityTemplate",
-    entityId: template.id,
-    action: "UPDATE",
-    fieldPath: "tags",
-    oldValue: { action: "unassign", tagId: tag.id, name: tag.name },
+  await prisma.$transaction(async (tx) => {
+    await tx.entityTemplateTag.deleteMany({ where: { templateId: template.id, tagId: tag.id } });
+    await writeAudit({ actorId: actor.id, workspaceId: template.workspaceId, entityType: "EntityTemplate", entityId: template.id, action: "UPDATE", fieldPath: "tags", oldValue: { action: "unassign", tagId: tag.id, name: tag.name } }, tx);
   });
   revalidatePath("/templates");
   revalidatePath(`/templates/${template.id}`);
@@ -383,14 +341,17 @@ export async function applyTemplateToTemplate(input: {
   if (input.parentNodeId) {
     await prisma.templateNode.findFirstOrThrow({ where: { id: input.parentNodeId, templateId: input.targetTemplateId } });
   }
-  const result = await prisma.$transaction((tx) => copyTemplateIntoTemplate(input, tx));
-  await writeAudit({
+  const result = await prisma.$transaction(async (tx) => {
+    const copied = await copyTemplateIntoTemplate(input, tx);
+    await writeAudit({
     actorId: actor.id,
     workspaceId: target.workspaceId,
     entityType: "EntityTemplate",
     entityId: input.sourceTemplateId,
     action: "APPLY_TEMPLATE",
-    newValue: { targetTemplateId: target.id, copiedNodeIds: result.copiedNodeIds, copiedSlotIds: result.copiedSlotIds, parentNodeId: input.parentNodeId },
+    newValue: { targetTemplateId: target.id, copiedNodeIds: copied.copiedNodeIds, copiedSlotIds: copied.copiedSlotIds, parentNodeId: input.parentNodeId },
+    }, tx);
+    return copied;
   });
   revalidatePath(`/templates/${target.id}`);
   return result;
@@ -407,24 +368,27 @@ export async function createTemplateSlot(input: {
 }) {
   const actor = await requireGM();
   const { template } = await requireTemplateGM(input.templateId);
-  const slot = await prisma.templateSlot.create({
-    data: {
-      templateId: input.templateId,
-      key: input.key.trim(),
-      label: input.label.trim(),
-      description: input.description?.trim() || null,
-      direction: input.direction,
-      acceptedTypes: input.acceptedTypes,
-      required: input.required ?? true,
-    },
-  });
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: template.workspaceId,
-    entityType: "TemplateSlot",
-    entityId: slot.id,
-    action: "CREATE",
-    newValue: { key: slot.key, label: slot.label, direction: slot.direction, acceptedTypes: slot.acceptedTypes, required: slot.required },
+  const slot = await prisma.$transaction(async (tx) => {
+    const created = await tx.templateSlot.create({
+      data: {
+        templateId: input.templateId,
+        key: input.key.trim(),
+        label: input.label.trim(),
+        description: input.description?.trim() || null,
+        direction: input.direction,
+        acceptedTypes: input.acceptedTypes,
+        required: input.required ?? true,
+      },
+    });
+    await writeAudit({
+      actorId: actor.id,
+      workspaceId: template.workspaceId,
+      entityType: "TemplateSlot",
+      entityId: created.id,
+      action: "CREATE",
+      newValue: { key: created.key, label: created.label, direction: created.direction, acceptedTypes: created.acceptedTypes, required: created.required },
+    }, tx);
+    return created;
   });
   revalidatePath(`/templates/${input.templateId}`);
   return slot;
@@ -443,25 +407,28 @@ export async function updateTemplateSlot(input: {
   const actor = await requireGM();
   const { template } = await requireTemplateGM(input.templateId);
   const current = await prisma.templateSlot.findFirstOrThrow({ where: { id: input.slotId, templateId: input.templateId } });
-  const updated = await prisma.templateSlot.update({
-    where: { id: input.slotId },
-    data: {
-      key: input.key?.trim(),
-      label: input.label?.trim(),
-      description: input.description !== undefined ? input.description?.trim() || null : undefined,
-      direction: input.direction,
-      acceptedTypes: input.acceptedTypes,
-      required: input.required,
-    },
-  });
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: template.workspaceId,
-    entityType: "TemplateSlot",
-    entityId: input.slotId,
-    action: "UPDATE",
-    oldValue: { key: current.key, label: current.label, description: current.description, direction: current.direction, acceptedTypes: current.acceptedTypes, required: current.required },
-    newValue: { key: updated.key, label: updated.label, description: updated.description, direction: updated.direction, acceptedTypes: updated.acceptedTypes, required: updated.required },
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.templateSlot.update({
+      where: { id: input.slotId },
+      data: {
+        key: input.key?.trim(),
+        label: input.label?.trim(),
+        description: input.description !== undefined ? input.description?.trim() || null : undefined,
+        direction: input.direction,
+        acceptedTypes: input.acceptedTypes,
+        required: input.required,
+      },
+    });
+    await writeAudit({
+      actorId: actor.id,
+      workspaceId: template.workspaceId,
+      entityType: "TemplateSlot",
+      entityId: input.slotId,
+      action: "UPDATE",
+      oldValue: { key: current.key, label: current.label, description: current.description, direction: current.direction, acceptedTypes: current.acceptedTypes, required: current.required },
+      newValue: { key: changed.key, label: changed.label, description: changed.description, direction: changed.direction, acceptedTypes: changed.acceptedTypes, required: changed.required },
+    }, tx);
+    return changed;
   });
   revalidatePath(`/templates/${input.templateId}`);
   return updated;
@@ -471,14 +438,16 @@ export async function deleteTemplateSlot(input: { templateId: string; slotId: st
   const actor = await requireGM();
   const { template } = await requireTemplateGM(input.templateId);
   const current = await prisma.templateSlot.findFirstOrThrow({ where: { id: input.slotId, templateId: input.templateId } });
-  await prisma.templateSlot.delete({ where: { id: input.slotId } });
-  await writeAudit({
-    actorId: actor.id,
-    workspaceId: template.workspaceId,
-    entityType: "TemplateSlot",
-    entityId: input.slotId,
-    action: "DELETE",
-    oldValue: { key: current.key, label: current.label, direction: current.direction, acceptedTypes: current.acceptedTypes, required: current.required },
+  await prisma.$transaction(async (tx) => {
+    await tx.templateSlot.delete({ where: { id: input.slotId } });
+    await writeAudit({
+      actorId: actor.id,
+      workspaceId: template.workspaceId,
+      entityType: "TemplateSlot",
+      entityId: input.slotId,
+      action: "DELETE",
+      oldValue: { key: current.key, label: current.label, direction: current.direction, acceptedTypes: current.acceptedTypes, required: current.required },
+    }, tx);
   });
   revalidatePath(`/templates/${input.templateId}`);
 }
