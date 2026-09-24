@@ -22,8 +22,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">/admin</span>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <aside className="rounded-md border border-border bg-card p-2">
+      <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="min-w-0 rounded-md border border-border bg-card p-2">
           <AdminSidebar />
         </aside>
         <div className="min-w-0">{children}</div>

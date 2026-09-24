@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, LayoutDashboard, LogOut, ShieldCheck } from "lucide-react";
+import { BookOpen, ChevronDown, LayoutDashboard, LogOut, Menu, ShieldCheck } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -30,30 +30,66 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const isPlatformAdmin = session?.user?.id
     ? isPlatformAdminAccount({ id: session.user.id, email: session.user.email ?? null })
     : false;
+  const accountLabel = session?.user?.name ?? session?.user?.email ?? "";
   return (
     <html lang={language}>
       <body>
         <I18nProvider initialLanguage={language}>
-          <div className="min-h-screen">
-            <header className="border-b bg-card">
-              <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-                <Link href={activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/"} className="text-lg font-semibold">
+          <div className="min-h-screen w-full min-w-0 overflow-x-clip">
+            <header className="w-full border-b bg-card">
+              <div className="mx-auto flex w-full min-w-0 max-w-7xl items-center justify-between gap-3 px-3 py-3 sm:px-6 sm:py-4">
+                <Link href={activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/"} className="shrink-0 text-lg font-semibold">
                   Role Engine
                 </Link>
-                {session?.user && <nav className="flex items-center gap-2 text-sm">
-                  <Link className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted" href={activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/"}>
+                {session?.user && <>
+                  <details className="group relative ml-auto min-w-0 md:hidden">
+                    <summary className="flex min-h-11 min-w-0 max-w-[min(18rem,calc(100vw-10rem))] cursor-pointer list-none items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
+                      <Menu className="h-4 w-4 shrink-0" />
+                      <span className="truncate font-medium">{accountLabel}</span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-md border border-border bg-card p-3 shadow-lg">
+                      <div className="mb-2 break-words border-b px-3 pb-3 text-sm font-medium">{accountLabel}</div>
+                      <nav className="grid gap-1 text-sm">
+                        <Link className="flex min-h-11 items-center gap-3 rounded-md px-3 hover:bg-muted" href={activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/"}>
+                          <LayoutDashboard className="h-4 w-4" />{t("nav.dashboard")}
+                        </Link>
+                        {hasWritableWorkspace && <Link className="flex min-h-11 items-center gap-3 rounded-md px-3 hover:bg-muted" href={activeWorkspace ? `/workspaces/${activeWorkspace.id}/templates` : "/templates"}>
+                          <BookOpen className="h-4 w-4" />{t("nav.templates")}
+                        </Link>}
+                        {isPlatformAdmin && <Link className="flex min-h-11 items-center gap-3 rounded-md px-3 hover:bg-muted" href="/admin">
+                          <ShieldCheck className="h-4 w-4" />{t("admin.title")}
+                        </Link>}
+                      </nav>
+                      <div className="mt-3 grid gap-3 border-t pt-3">
+                        <WorkspaceSwitcher userId={session.user.id} />
+                        <LanguageSwitcher />
+                        <form action={async () => {
+                          "use server";
+                          await signOut({ redirectTo: "/login" });
+                        }}>
+                          <Button type="submit" variant="outline" className="min-h-11 w-full justify-start">
+                            <LogOut className="h-4 w-4" />{t("nav.signOut")}
+                          </Button>
+                        </form>
+                      </div>
+                    </div>
+                  </details>
+                  <nav className="hidden min-w-0 flex-wrap items-center justify-end gap-2 text-sm md:flex">
+                  <Link aria-label={t("nav.dashboard")} className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted" href={activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/"}>
                     <LayoutDashboard className="h-4 w-4" />
                     {t("nav.dashboard")}
                   </Link>
                   {hasWritableWorkspace && <>
-                    <Link className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted" href={activeWorkspace ? `/workspaces/${activeWorkspace.id}/templates` : "/templates"}>
+                    <Link aria-label={t("nav.templates")} className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted" href={activeWorkspace ? `/workspaces/${activeWorkspace.id}/templates` : "/templates"}>
                       <BookOpen className="h-4 w-4" />
                       {t("nav.templates")}
                     </Link>
                   </>}
-                  <div className="ml-2 flex items-center gap-2 border-l pl-4">
+                  <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 border-l pl-3">
                     {isPlatformAdmin && (
                       <Link
+                        aria-label={t("admin.title")}
                         className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 hover:bg-muted"
                         href="/admin"
                       >
@@ -63,7 +99,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     )}
                     <WorkspaceSwitcher userId={session.user.id} />
                     <LanguageSwitcher />
-                    <div className="hidden text-right sm:block">
+                    <div className="text-right">
                       <div className="max-w-40 truncate text-xs font-medium">{session.user.name ?? session.user.email}</div>
                     </div>
                     <form action={async () => {
@@ -75,11 +111,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                       </Button>
                     </form>
                   </div>
-                </nav>}
+                  </nav>
+                </>}
                 {!session?.user && <LanguageSwitcher />}
               </div>
             </header>
-            <main className="mx-auto max-w-7xl px-6 py-6" data-workspace-context={activeWorkspace?.id}>{children}</main>
+            <main className="mx-auto w-full min-w-0 max-w-7xl px-3 py-4 sm:px-6 sm:py-6" data-workspace-context={activeWorkspace?.id}>{children}</main>
           </div>
         </I18nProvider>
       </body>

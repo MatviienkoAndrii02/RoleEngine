@@ -267,8 +267,8 @@ function DataFields({
   const { t } = useI18n();
   const value = data as Record<string, unknown> | undefined;
   if (type === "NUMBER") return <><NumberField name="value" label={t("common.value")} value={value?.value ?? 0} /><div className="grid grid-cols-2 gap-3"><NumberField name="min" label={t("node.minimum")} value={value?.min ?? ""} /><NumberField name="max" label={t("node.maximum")} value={value?.max ?? ""} /></div><label className="flex items-center gap-2 text-sm"><input name="allowNegative" type="checkbox" defaultChecked={Boolean(value?.allowNegative)} />{t("node.allowNegative")}</label></>;
-  if (type === "BAR") return <div className="grid grid-cols-3 gap-3"><NumberField name="current" label={t("node.current")} value={value?.current ?? 0} /><NumberField name="min" label={t("node.minimum")} value={value?.min ?? ""} /><NumberField name="max" label={t("node.maximum")} value={value?.max ?? 10} /></div>;
-  if (type === "TEXT") return <div className="space-y-2"><label className="text-sm font-medium" htmlFor="text">{t("node.text")}</label><textarea id="text" name="text" defaultValue={String(value?.text ?? "")} className="min-h-32 w-full resize-y rounded-md border border-input bg-background p-3 text-sm" /></div>;
+  if (type === "BAR") return <div className="grid gap-3 sm:grid-cols-3"><NumberField name="current" label={t("node.current")} value={value?.current ?? 0} /><NumberField name="min" label={t("node.minimum")} value={value?.min ?? ""} /><NumberField name="max" label={t("node.maximum")} value={value?.max ?? 10} /></div>;
+  if (type === "TEXT") return <div className="space-y-2"><label className="text-sm font-medium" htmlFor="text">{t("node.text")}</label><textarea id="text" name="text" defaultValue={String(value?.text ?? "")} className="min-h-32 w-full resize-y rounded-md border border-input bg-background p-3 text-base sm:text-sm" /></div>;
   if (type === "TABLE") return <TableEditor data={value} />;
   if (type === "LINK") {
     const targetKind = value?.targetKind === "character" ? "character" : "node";

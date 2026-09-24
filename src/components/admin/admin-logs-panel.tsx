@@ -94,7 +94,7 @@ export function AdminLogsPanel() {
           <label className="grid gap-1 text-xs text-muted-foreground">
             {t("admin.logs.search")}
             <input
-              className="h-9 min-w-56 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+              className="h-9 min-w-0 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground sm:min-w-56 sm:w-auto"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder={t("admin.logs.searchPlaceholder")}

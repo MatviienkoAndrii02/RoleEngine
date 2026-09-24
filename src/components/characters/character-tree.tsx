@@ -113,26 +113,26 @@ function TreeRow({ characterId, node, depth, editorSectionId, forceExpanded, man
       <div
         id={`node-row-${node.id}`}
         className={cn(
-          "grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border border-transparent py-1.5 pr-3 text-sm",
+          "grid min-h-11 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 rounded-md border border-transparent py-1.5 pr-2 text-sm sm:min-h-10 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:gap-2 sm:pr-3",
           "relative",
           nodePickRequest && pickAllowed && "cursor-crosshair border-primary/20 hover:bg-primary/10",
           nodePickRequest && !pickAllowed && "cursor-not-allowed opacity-50",
           !nodePickRequest && (selected ? "border-primary bg-primary/10" : "hover:bg-muted")
         )}
-        style={{ paddingLeft: `${depth * 18 + 4}px` }}
+        style={{ paddingLeft: `${Math.min(depth * 14, 70) + 4}px` }}
         onClick={() => nodePickRequest ? pickAllowed && completeNodePick(node.id) : selectNode(node.id)}
       >
         {accentColor && (
           <span
             className={`absolute bottom-1.5 top-1.5 w-1.5 rounded-md ${templateTagColorLineClass(accentColor)}`}
-            style={{ left: `${depth * 18 + 2}px` }}
+            style={{ left: `${Math.min(depth * 14, 70) + 2}px` }}
           />
         )}
         <Button
           aria-label={collapsed ? t("node.expand") : t("node.collapse")}
           size="icon"
           variant="ghost"
-          className="h-8 w-8"
+          className="h-11 w-11 sm:h-8 sm:w-8"
           onClick={(event) => {
             event.stopPropagation();
             if (hasChildren) toggleNode(node.id, collapsedByDefault);
@@ -155,14 +155,14 @@ function TreeRow({ characterId, node, depth, editorSectionId, forceExpanded, man
           onToggleTable={() => setTableExpanded((value) => !value)}
         />
         {selected && !nodePickRequest && (
-          <div className="flex items-center gap-1">
+          <div className="col-span-3 flex items-center justify-end gap-1 sm:col-span-1">
             {nodeTriggers.map((trigger) => (
               <Button
                 key={trigger.effectId}
                 type="button"
                 size="icon"
                 variant="ghost"
-                className="h-8 w-8 text-primary"
+                className="h-11 w-11 text-primary sm:h-8 sm:w-8"
                 title={t("effect.runNamed", { name: trigger.name })}
                 aria-label={t("effect.runNamed", { name: trigger.name })}
                 disabled={runningEffectId === trigger.effectId}
@@ -178,7 +178,7 @@ function TreeRow({ characterId, node, depth, editorSectionId, forceExpanded, man
               type="button"
               size="icon"
               variant="ghost"
-              className="h-8 w-8"
+              className="h-11 w-11 sm:h-8 sm:w-8"
               title={t("node.addInside")}
               aria-label={`${t("node.addInside")} ${node.name}`}
               onClick={(event) => {
@@ -194,7 +194,7 @@ function TreeRow({ characterId, node, depth, editorSectionId, forceExpanded, man
               type="button"
               size="icon"
               variant="ghost"
-              className="h-8 w-8"
+              className="h-11 w-11 sm:h-8 sm:w-8"
               title={t("node.edit")}
               aria-label={`${t("common.edit")} ${node.name}`}
               onClick={(event) => {

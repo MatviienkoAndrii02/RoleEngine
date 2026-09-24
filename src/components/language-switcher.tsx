@@ -7,7 +7,7 @@ import { languages } from "@/i18n/translations";
 export function LanguageSwitcher() {
   const { language, setLanguage, t } = useI18n();
   return (
-    <label className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-2 py-1 text-sm">
+    <label className="inline-flex min-h-11 items-center gap-2 rounded-md border border-input bg-background px-2 py-1 text-sm sm:min-h-9">
       <Languages className="h-4 w-4 text-muted-foreground" />
       <span className="sr-only">{t("language.label")}</span>
       <select

@@ -457,7 +457,7 @@ function CreatedNodeFields({ payload, operation, type, setType }: { payload?: Ef
       <NodeIconPicker type={actualType} defaultValue={data.icon} />
       <NodeAccentColorPicker name="createdAccentColor" defaultValue={typeof data.accentColor === "string" ? data.accentColor : undefined} />
       {actualType === "NUMBER" && (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid gap-2 sm:grid-cols-3">
           <Field label={t("common.value")} name="createdValue" type="number" step="any" defaultValue={String(data.value ?? 0)} />
           <Field label={t("node.minimum")} name="createdMin" type="number" step="any" defaultValue={data.min == null ? "" : String(data.min)} />
           <Field label={t("node.maximum")} name="createdMax" type="number" step="any" defaultValue={data.max == null ? "" : String(data.max)} />

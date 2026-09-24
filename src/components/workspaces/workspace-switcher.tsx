@@ -27,7 +27,7 @@ export async function WorkspaceSwitcher({ userId }: { userId: string }) {
   return (
     <div className="flex items-center gap-2">
       <WorkspaceSelectForm action={selectWorkspace} activeWorkspaceId={activeWorkspace.id} workspaces={workspaces} />
-      <Button asChild variant="ghost" size="icon" title={t("workspace.manage")} aria-label={t("workspace.manage")}>
+      <Button asChild variant="ghost" size="icon" className="h-11 w-11 sm:h-9 sm:w-9" title={t("workspace.manage")} aria-label={t("workspace.manage")}>
         <Link href="/workspaces">
           <SlidersHorizontal className="h-4 w-4" />
         </Link>

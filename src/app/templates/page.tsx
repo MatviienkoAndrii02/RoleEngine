@@ -39,16 +39,16 @@ export default async function TemplatesPage({ params, searchParams }: { params?:
 
   return (
     <div className="space-y-6" data-workspace-context={writableWorkspace?.id}>
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold">{t("nav.templates")}</h1>
           <p className="text-sm text-muted-foreground">{showArchived ? t("template.archivedSubtitle") : t("template.listSubtitle")}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant={showArchived ? "outline" : "ghost"}><Link href={showArchived ? (writableWorkspace ? `/workspaces/${writableWorkspace.id}/templates` : "/templates") : (writableWorkspace ? `/workspaces/${writableWorkspace.id}/templates?archived=1` : "/templates?archived=1")}>
+        <div className="grid w-full gap-2 sm:w-auto sm:flex sm:flex-wrap">
+          <Button asChild className="h-auto min-h-9 w-full whitespace-normal px-3 py-2 text-center sm:w-auto" variant={showArchived ? "outline" : "ghost"}><Link href={showArchived ? (writableWorkspace ? `/workspaces/${writableWorkspace.id}/templates` : "/templates") : (writableWorkspace ? `/workspaces/${writableWorkspace.id}/templates?archived=1` : "/templates?archived=1")}>
             {showArchived ? t("template.activeTemplates") : t("template.archivedTemplates")}
           </Link></Button>
-          {!showArchived && writableWorkspace && <Button asChild><Link href={`/workspaces/${writableWorkspace.id}/templates/new`}>
+          {!showArchived && writableWorkspace && <Button asChild className="h-auto min-h-9 w-full whitespace-normal px-3 py-2 text-center sm:w-auto"><Link href={`/workspaces/${writableWorkspace.id}/templates/new`}>
             <Plus className="h-4 w-4" />
             {t("template.new")}
           </Link></Button>}

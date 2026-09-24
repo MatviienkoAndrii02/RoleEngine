@@ -15,7 +15,7 @@ export function AdminHealthPanel() {
   const { data, error, loading, reload } = useAdminResource("/health", "admin.error.generic", isAdminHealthSnapshot);
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">{loading ? t("admin.dashboard.loading") : ""}</span>
         <Button type="button" size="sm" variant="outline" onClick={() => void reload()} disabled={loading}>
@@ -31,14 +31,14 @@ export function AdminHealthPanel() {
       )}
 
       {data && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
+        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle>{t("admin.health.application")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">{t("admin.health.application")}</span>
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
+                <span className="min-w-0 break-words text-muted-foreground">{t("admin.health.application")}</span>
                 <AdminStatusBadge state={data.application.status} />
               </div>
               <AdminMetricRow label={t("admin.health.version")} value={data.application.version} />
@@ -49,24 +49,24 @@ export function AdminHealthPanel() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle>{t("admin.health.database")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">{t("admin.health.database")}</span>
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
+                <span className="min-w-0 break-words text-muted-foreground">{t("admin.health.database")}</span>
                 <AdminStatusBadge state={data.database.status} />
               </div>
               <AdminMetricRow
                 label={t("admin.health.latency")}
                 value={data.database.latencyMs === null ? null : `${data.database.latencyMs} ms`}
               />
-              {data.database.message && <p className="text-xs text-destructive">{data.database.message}</p>}
+              {data.database.message && <p className="break-words text-xs text-destructive">{data.database.message}</p>}
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle>{t("admin.health.cpu")}</CardTitle>
             </CardHeader>
@@ -83,8 +83,8 @@ export function AdminHealthPanel() {
       )}
 
       {data && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
+        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle>{t("admin.health.memory")}</CardTitle>
             </CardHeader>
@@ -97,7 +97,7 @@ export function AdminHealthPanel() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle>{t("admin.health.disk")}</CardTitle>
             </CardHeader>
@@ -110,27 +110,27 @@ export function AdminHealthPanel() {
                       label={t("admin.health.diskFree")}
                       value={`${formatBytes(data.disk.freeBytes) ?? ""} / ${formatBytes(data.disk.totalBytes) ?? ""}`}
                     />
-                    <p className="break-all text-xs text-muted-foreground">{data.disk.path}</p>
+                    <p className="min-w-0 max-w-full break-all text-xs text-muted-foreground">{data.disk.path}</p>
                   </>
                 )
                 : <p className="text-sm text-muted-foreground">{t("admin.notAvailable")}</p>}
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-2">
+          <Card className="min-w-0 lg:col-span-2">
             <CardHeader>
               <CardTitle>{t("admin.health.backupTool")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">{t("admin.health.backupTool")}</span>
-                <span className="font-medium">
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
+                <span className="min-w-0 break-words text-muted-foreground">{t("admin.health.backupTool")}</span>
+                <span className="min-w-0 break-words text-right font-medium">
                   {data.backupTool.available ? t("admin.health.available") : t("admin.health.unavailable")}
                 </span>
               </div>
               <AdminMetricRow label={t("admin.health.path")} value={data.backupTool.path} />
               <AdminMetricRow label={t("admin.health.version")} value={data.backupTool.version} />
-              {data.backupTool.message && <p className="text-xs text-destructive">{data.backupTool.message}</p>}
+              {data.backupTool.message && <p className="break-words text-xs text-destructive">{data.backupTool.message}</p>}
             </CardContent>
           </Card>
         </div>

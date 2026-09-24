@@ -168,13 +168,13 @@ export function AdminBackupsManager() {
                 )}
               </div>
 
-              <div className="flex shrink-0 gap-2">
+              <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
                 {backup.status === "COMPLETED" && (
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                    className="w-full whitespace-normal px-2 text-xs border-destructive/40 text-destructive hover:bg-destructive/10 sm:w-auto sm:px-3 sm:text-sm"
                     onClick={() => openRestore(backup)}
                     disabled={pending !== null || restorePending}
                   >
@@ -183,7 +183,7 @@ export function AdminBackupsManager() {
                   </Button>
                 )}
                 {backup.status === "COMPLETED" && (
-                  <Button asChild size="sm" variant="outline">
+                  <Button asChild size="sm" variant="outline" className="w-full whitespace-normal px-2 text-xs sm:w-auto sm:px-3 sm:text-sm">
                     <a href={adminApiUrl(`/backups/${backup.id}/download`)}>
                       <Download className="h-4 w-4" />
                       {t("admin.backups.download")}
@@ -194,7 +194,7 @@ export function AdminBackupsManager() {
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                  className="w-full whitespace-normal px-2 text-xs border-destructive/40 text-destructive hover:bg-destructive/10 sm:w-auto sm:px-3 sm:text-sm"
                   onClick={() => void deleteBackup(backup)}
                   disabled={pending !== null || restorePending}
                 >
