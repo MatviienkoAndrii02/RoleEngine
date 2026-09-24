@@ -110,6 +110,26 @@ export type AdminBackupListResponse = {
   backups: AdminBackupRecord[];
 };
 
+export type AdminUserSummary = {
+  id: string;
+  name: string | null;
+  email: string;
+  username: string;
+  createdAt: string;
+  lastSeenAt: string | null;
+  online: boolean;
+  createdWorkspaceCount: number;
+  memberWorkspaceCount: number;
+  characterCount: number;
+  templateCount: number;
+};
+
+export type AdminUsersResponse = {
+  generatedAt: string;
+  onlineWindowSeconds: number;
+  users: AdminUserSummary[];
+};
+
 // Restoring is destructive, so the operator receives the full outcome: which snapshot was
 // applied, how long it took, where the automatic pre-restore safety backup lives and whether the
 // restored snapshot left the schema behind the running application.
@@ -177,6 +197,22 @@ export function isAdminBackupListResponse(value: unknown): value is AdminBackupL
   return isRecord(value.storage) && Array.isArray(value.backups) && value.backups.every(isAdminBackupRecord);
 }
 
+export function isAdminUsersResponse(value: unknown): value is AdminUsersResponse {
+  if (!isRecord(value) || typeof value.generatedAt !== "string" || typeof value.onlineWindowSeconds !== "number") return false;
+  return Array.isArray(value.users) && value.users.every((user: unknown) => isRecord(user)
+    && typeof user.id === "string"
+    && (user.name === null || typeof user.name === "string")
+    && typeof user.email === "string"
+    && typeof user.username === "string"
+    && typeof user.createdAt === "string"
+    && (user.lastSeenAt === null || typeof user.lastSeenAt === "string")
+    && typeof user.online === "boolean"
+    && isNonNegativeInteger(user.createdWorkspaceCount)
+    && isNonNegativeInteger(user.memberWorkspaceCount)
+    && isNonNegativeInteger(user.characterCount)
+    && isNonNegativeInteger(user.templateCount));
+}
+
 export function isAdminBackupRestoreResult(value: unknown): value is AdminBackupRestoreResult {
   if (!isRecord(value)) return false;
   return typeof value.backupId === "string"
@@ -188,4 +224,8 @@ export function isAdminBackupRestoreResult(value: unknown): value is AdminBackup
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }

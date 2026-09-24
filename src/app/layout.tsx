@@ -5,6 +5,7 @@ import { auth, signOut } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
+import { UserPresenceHeartbeat } from "@/components/admin/user-presence-heartbeat";
 import { I18nProvider } from "@/i18n/client";
 import { getTranslator } from "@/i18n/server";
 import { getActiveWorkspace, getRequestWorkspaceId, requireUserWorkspace } from "@/server/authz";
@@ -35,6 +36,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang={language}>
       <body>
         <I18nProvider initialLanguage={language}>
+          {session?.user && <UserPresenceHeartbeat />}
           <div className="min-h-screen w-full min-w-0 overflow-x-clip">
             <header className="w-full border-b bg-card">
               <div className="mx-auto flex w-full min-w-0 max-w-7xl items-center justify-between gap-3 px-3 py-3 sm:px-6 sm:py-4">

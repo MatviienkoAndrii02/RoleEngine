@@ -10,6 +10,7 @@ import {
   Gauge,
   HardDriveDownload,
   LayoutDashboard,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { useI18n } from "@/i18n/client";
@@ -25,6 +26,7 @@ const sections: AdminSection[] = [
   { href: "/admin", labelKey: "admin.nav.dashboard", icon: LayoutDashboard, exact: true },
   { href: "/admin/backups", labelKey: "admin.nav.backups", icon: HardDriveDownload },
   { href: "/admin/health", labelKey: "admin.nav.health", icon: Activity },
+  { href: "/admin/users", labelKey: "admin.nav.users", icon: Users },
   { href: "/admin/metrics", labelKey: "admin.nav.metrics", icon: Gauge },
   { href: "/admin/logs", labelKey: "admin.nav.logs", icon: FileText },
   { href: "/admin/database", labelKey: "admin.nav.database", icon: Database },

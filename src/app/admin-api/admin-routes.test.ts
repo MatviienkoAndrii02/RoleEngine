@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { AdminBackupRecord, AdminBackupRestoreResult } from "@/domain/admin-console";
+import type { AdminBackupRecord, AdminBackupRestoreResult, AdminUsersResponse } from "@/domain/admin-console";
 import { deleteAdminBackupRoute } from "@/app/admin-api/backups/[backupId]/backup-item-route-handlers";
 import { downloadAdminBackupRoute } from "@/app/admin-api/backups/[backupId]/download/download-route-handlers";
 import * as restoreRoute from "@/app/admin-api/backups/[backupId]/restore/route";
@@ -8,6 +8,7 @@ import { restoreAdminBackupRoute } from "@/app/admin-api/backups/[backupId]/rest
 import { createAdminBackupRoute, listAdminBackupsRoute } from "@/app/admin-api/backups/backup-route-handlers";
 import { adminHealthRoute } from "@/app/admin-api/health/health-route-handlers";
 import { adminOverviewRoute } from "@/app/admin-api/overview/overview-route-handlers";
+import { adminUsersRoute } from "@/app/admin-api/users/users-route-handlers";
 import type { AdminActor } from "@/server/admin/authz";
 import { appError, forbidden } from "@/server/errors";
 
@@ -55,6 +56,15 @@ const healthSnapshot = {
   backupTool: { available: true, version: "pg_dump (PostgreSQL) 18.4", path: "pg_dump", message: null },
 };
 
+const usersSnapshot: AdminUsersResponse = {
+  generatedAt: "2026-09-24T12:00:00.000Z",
+  onlineWindowSeconds: 300,
+  users: [{
+    id: "user_1", name: "Example User", email: "user@example.com", username: "example", createdAt: "2026-01-01T00:00:00.000Z",
+    lastSeenAt: "2026-09-24T11:59:00.000Z", online: true, createdWorkspaceCount: 1, memberWorkspaceCount: 2, characterCount: 4, templateCount: 3,
+  }],
+};
+
 const backupDependencies = {
   requirePlatformAdmin: allow,
   listBackups: async () => [backupRecord],
@@ -79,6 +89,11 @@ describe("admin api authorization and envelopes", () => {
     await expectForbidden(await adminHealthRoute(new Request("http://localhost/admin-api/health"), {
       requirePlatformAdmin: deny,
       getAdminHealthSnapshot: async () => healthSnapshot,
+    }));
+
+    await expectForbidden(await adminUsersRoute(new Request("http://localhost/admin-api/users"), {
+      requirePlatformAdmin: deny,
+      getAdminUsers: async () => usersSnapshot,
     }));
 
     await expectForbidden(await listAdminBackupsRoute(new Request("http://localhost/admin-api/backups"), { ...backupDependencies, requirePlatformAdmin: deny }));
@@ -124,6 +139,16 @@ describe("admin api authorization and envelopes", () => {
     });
     assert.equal(health.status, 200);
     assert.deepEqual(await health.json(), healthSnapshot);
+  });
+
+  it("returns the user summary without caching for an admin", async () => {
+    const response = await adminUsersRoute(new Request("http://localhost/admin-api/users"), {
+      requirePlatformAdmin: allow,
+      getAdminUsers: async () => usersSnapshot,
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await response.json(), usersSnapshot);
   });
 
   it("lists and creates backups with the acting administrator attached", async () => {
