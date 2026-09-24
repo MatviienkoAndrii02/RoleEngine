@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 import { TemplateFilterSelect, type TemplatePickerOption } from "@/components/templates/template-filter-select";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 
 type Option = { id: string; name: string };
 
@@ -24,7 +25,7 @@ export function CreateCharacterForm({ players, templates, defaultTemplateId }: {
   async function submit(formData: FormData) {
     setPending(true);
     setError(null);
-    const response = await fetch("/api/characters", {
+    const response = await fetch(workspaceApiUrl("/api/characters"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -39,8 +40,8 @@ export function CreateCharacterForm({ players, templates, defaultTemplateId }: {
       setPending(false);
       return;
     }
-    const character = (await response.json()) as { id: string };
-    router.push(`/characters/${character.id}`);
+    const character = (await response.json()) as { id: string; workspaceId: string };
+    router.push(`/workspaces/${character.workspaceId}/characters/${character.id}`);
     router.refresh();
   }
 

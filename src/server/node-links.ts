@@ -28,7 +28,7 @@ export async function resolveCharacterNodeLinks({
             },
           ],
         },
-        select: { id: true, name: true },
+        select: { id: true, name: true, workspaceId: true },
       })
     : [];
 
@@ -40,7 +40,7 @@ export async function resolveCharacterNodeLinks({
     return {
       ...node,
       resolvedLink: character
-        ? { kind: "character", characterId: character.id, label: character.name, href: `/characters/${character.id}`, available: true }
+        ? { kind: "character", characterId: character.id, label: character.name, href: `/workspaces/${character.workspaceId}/characters/${character.id}`, available: true }
         : missingLink(missingLabel),
     };
   });

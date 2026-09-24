@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { localizedApiError } from "@/i18n/api-errors";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 import { useI18n } from "@/i18n/client";
 
 type PlayerOption = {
@@ -33,7 +34,7 @@ export function CharacterSettings({ character, players }: { character: Character
   async function submit(formData: FormData) {
     setPending(true);
     setError(null);
-    const response = await fetch(`/api/characters/${character.id}`, {
+    const response = await fetch(workspaceApiUrl(`/api/characters/${character.id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -54,7 +55,7 @@ export function CharacterSettings({ character, players }: { character: Character
     if (!window.confirm(t("settings.archiveConfirm", { name: character.name }))) return;
     setPending(true);
     setError(null);
-    const response = await fetch(`/api/characters/${character.id}`, { method: "DELETE" });
+    const response = await fetch(workspaceApiUrl(`/api/characters/${character.id}`), { method: "DELETE" });
     setPending(false);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "settings.archiveFailed"));
@@ -74,7 +75,7 @@ export function CharacterSettings({ character, players }: { character: Character
     if (!userId) return;
     setPending(true);
     setError(null);
-    const response = await fetch(`/api/characters/${character.id}/assignments`, {
+    const response = await fetch(workspaceApiUrl(`/api/characters/${character.id}/assignments`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId }),
@@ -91,7 +92,7 @@ export function CharacterSettings({ character, players }: { character: Character
     if (!window.confirm(t("settings.removeAccessConfirm", { name: player.name ?? player.email }))) return;
     setPending(true);
     setError(null);
-    const response = await fetch(`/api/characters/${character.id}/assignments`, {
+    const response = await fetch(workspaceApiUrl(`/api/characters/${character.id}/assignments`), {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: player.id }),

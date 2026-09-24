@@ -133,10 +133,10 @@ describe("admin api authorization and envelopes", () => {
     assert.equal(listBody.storage.directory, "/srv/role-engine/backups");
     assert.deepEqual(listBody.backups, [backupRecord]);
 
-    const capturedActorIds: string[] = [];
+    const capturedActorIds: (string | null)[] = [];
     const created = await createAdminBackupRoute(new Request("http://localhost/admin-api/backups", { method: "POST" }), {
       ...backupDependencies,
-      createBackup: async (input: { actorId: string }) => {
+      createBackup: async (input: { actorId: string | null }) => {
         capturedActorIds.push(input.actorId);
         return backupRecord;
       },

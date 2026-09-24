@@ -7,7 +7,7 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 import { I18nProvider } from "@/i18n/client";
 import { getTranslator } from "@/i18n/server";
-import { getActiveWorkspace } from "@/server/authz";
+import { getActiveWorkspace, getRequestWorkspaceId, requireUserWorkspace } from "@/server/authz";
 import { isPlatformAdminAccount } from "@/server/admin/authz";
 import "./globals.css";
 
@@ -19,7 +19,12 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   const { language, t } = await getTranslator();
-  const activeWorkspace = session?.user?.id ? await getActiveWorkspace(session.user.id) : null;
+  const requestWorkspaceId = await getRequestWorkspaceId();
+  const activeWorkspace = session?.user?.id
+    ? requestWorkspaceId
+      ? await requireUserWorkspace(session.user.id, requestWorkspaceId)
+      : await getActiveWorkspace(session.user.id)
+    : null;
   const hasWritableWorkspace = Boolean(activeWorkspace?.canWrite);
   // Navigation hint only: the Admin Console authorizes every request on the server.
   const isPlatformAdmin = session?.user?.id
@@ -32,16 +37,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="min-h-screen">
             <header className="border-b bg-card">
               <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-                <Link href="/" className="text-lg font-semibold">
+                <Link href={activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/"} className="text-lg font-semibold">
                   Role Engine
                 </Link>
                 {session?.user && <nav className="flex items-center gap-2 text-sm">
-                  <Link className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted" href="/">
+                  <Link className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted" href={activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/"}>
                     <LayoutDashboard className="h-4 w-4" />
                     {t("nav.dashboard")}
                   </Link>
                   {hasWritableWorkspace && <>
-                    <Link className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted" href="/templates">
+                    <Link className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted" href={activeWorkspace ? `/workspaces/${activeWorkspace.id}/templates` : "/templates"}>
                       <BookOpen className="h-4 w-4" />
                       {t("nav.templates")}
                     </Link>
@@ -74,7 +79,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 {!session?.user && <LanguageSwitcher />}
               </div>
             </header>
-            <main className="mx-auto max-w-7xl px-6 py-6">{children}</main>
+            <main className="mx-auto max-w-7xl px-6 py-6" data-workspace-context={activeWorkspace?.id}>{children}</main>
           </div>
         </I18nProvider>
       </body>

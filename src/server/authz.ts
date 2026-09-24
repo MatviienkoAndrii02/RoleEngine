@@ -1,11 +1,13 @@
 import { auth } from "@/auth";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { appError, forbidden, unauthorized } from "@/server/errors";
 import type { WorkspaceRole } from "@prisma/client";
+import { REQUEST_WORKSPACE_HEADER } from "@/domain/workspace-context";
 
 const writableWorkspaceRoles: WorkspaceRole[] = ["OWNER", "GM"];
 export const ACTIVE_WORKSPACE_COOKIE = "role-engine-workspace";
+export { REQUEST_WORKSPACE_HEADER } from "@/domain/workspace-context";
 
 type SessionLike = { user?: { id: string } | null } | null;
 
@@ -71,6 +73,28 @@ export async function getActiveWritableWorkspace(userId: string) {
   return null;
 }
 
+export async function getRequestWorkspaceId() {
+  try {
+    return (await headers()).get(REQUEST_WORKSPACE_HEADER);
+  } catch {
+    return null;
+  }
+}
+
+export async function requireUserWorkspace(userId: string, workspaceId: string) {
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { workspaceId_userId: { workspaceId, userId } },
+    include: { workspace: { select: { id: true, name: true, archivedAt: true } } },
+  });
+  if (!membership || membership.workspace.archivedAt) throw appError("NOT_FOUND", "Workspace not found", 404);
+  return {
+    id: membership.workspace.id,
+    name: membership.workspace.name,
+    role: membership.role,
+    canWrite: writableWorkspaceRoles.includes(membership.role),
+  };
+}
+
 export function assertWorkspaceRoleMembership(
   workspaceId: string,
   membership: { workspaceId: string; role: WorkspaceRole; workspace?: { archivedAt: Date | null } | null } | null,
@@ -92,6 +116,11 @@ export async function assertUserHasWorkspaceRole(userId: string, workspaceId: st
 }
 
 export async function requirePrimaryWritableWorkspace(userId: string) {
+  const requestWorkspaceId = await getRequestWorkspaceId();
+  if (requestWorkspaceId) {
+    await assertUserHasWorkspaceRole(userId, requestWorkspaceId, writableWorkspaceRoles);
+    return requestWorkspaceId;
+  }
   const workspace = await getActiveWritableWorkspace(userId);
   if (!workspace) throw forbidden();
   return workspace.id;
@@ -103,7 +132,7 @@ export async function requireWorkspaceRole(workspaceId: string, roles: Workspace
   return { user, membership };
 }
 
-export async function requireCharacterGM(characterId: string, options: { archived?: "active" | "archived" | "any" } = {}, sessionOverride?: SessionLike) {
+export async function requireCharacterGM(characterId: string, options: { archived?: "active" | "archived" | "any"; workspaceId?: string } = {}, sessionOverride?: SessionLike) {
   const user = await requireUser(sessionOverride);
   const archived = options.archived ?? "active";
   const character = await prisma.character.findUnique({
@@ -111,7 +140,9 @@ export async function requireCharacterGM(characterId: string, options: { archive
     include: { workspace: { select: { archivedAt: true } } },
   });
 
-  if (!character) throw appError("NOT_FOUND", "Character not found", 404);
+  if (!character || (options.workspaceId && character.workspaceId !== options.workspaceId)) throw appError("NOT_FOUND", "Character not found", 404);
+  const requestWorkspaceId = await getRequestWorkspaceId();
+  if (requestWorkspaceId && character.workspaceId !== requestWorkspaceId) throw appError("NOT_FOUND", "Character not found", 404);
   if (archived === "active" && character.archivedAt) throw appError("NOT_FOUND", "Character not found", 404);
   if (archived === "archived" && !character.archivedAt) throw appError("NOT_FOUND", "Character not found", 404);
   if (character.workspace.archivedAt) throw forbidden();
@@ -120,7 +151,7 @@ export async function requireCharacterGM(characterId: string, options: { archive
   return { user, character };
 }
 
-export async function requireTemplateGM(templateId: string, options: { archived?: "active" | "archived" | "any" } = {}, sessionOverride?: SessionLike) {
+export async function requireTemplateGM(templateId: string, options: { archived?: "active" | "archived" | "any"; workspaceId?: string } = {}, sessionOverride?: SessionLike) {
   const user = await requireUser(sessionOverride);
   const archived = options.archived ?? "active";
   const template = await prisma.entityTemplate.findUnique({
@@ -128,7 +159,9 @@ export async function requireTemplateGM(templateId: string, options: { archived?
     include: { workspace: { select: { archivedAt: true } } },
   });
 
-  if (!template) throw appError("NOT_FOUND", "Template not found", 404);
+  if (!template || (options.workspaceId && template.workspaceId !== options.workspaceId)) throw appError("NOT_FOUND", "Template not found", 404);
+  const requestWorkspaceId = await getRequestWorkspaceId();
+  if (requestWorkspaceId && template.workspaceId !== requestWorkspaceId) throw appError("NOT_FOUND", "Template not found", 404);
   if (archived === "active" && template.archivedAt) throw appError("NOT_FOUND", "Template not found", 404);
   if (archived === "archived" && !template.archivedAt) throw appError("NOT_FOUND", "Template not found", 404);
   if (!template.workspaceId) throw forbidden();
@@ -138,11 +171,15 @@ export async function requireTemplateGM(templateId: string, options: { archived?
   return { user, template };
 }
 
-export async function canReadCharacter(characterId: string) {
+export async function canReadCharacter(characterId: string, workspaceId?: string) {
   const user = await requireUser();
+  const requestWorkspaceId = await getRequestWorkspaceId();
+  if (requestWorkspaceId && workspaceId && requestWorkspaceId !== workspaceId) throw forbidden();
+  const effectiveWorkspaceId = workspaceId ?? requestWorkspaceId ?? undefined;
   const readable = await prisma.character.findFirst({
     where: {
       id: characterId,
+      ...(effectiveWorkspaceId ? { workspaceId: effectiveWorkspaceId } : {}),
       workspace: {
         archivedAt: null,
         memberships: {

@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createTemplate } from "@/server/actions/templates";
-import { getActiveWritableWorkspace, requireUser } from "@/server/authz";
+import { getActiveWritableWorkspace, getRequestWorkspaceId, requireUser, requireUserWorkspace } from "@/server/authz";
 import { createTemplateCommandSchema } from "@/domain/validation";
 import { inputErrorResponse, parseJson } from "@/server/api-validation";
 
 export async function GET() {
   try {
     const user = await requireUser();
-    const activeWorkspace = await getActiveWritableWorkspace(user.id);
-    const workspaceIds = activeWorkspace ? [activeWorkspace.id] : [];
+    const requestedWorkspaceId = await getRequestWorkspaceId();
+    const activeWorkspace = requestedWorkspaceId
+      ? await requireUserWorkspace(user.id, requestedWorkspaceId)
+      : await getActiveWritableWorkspace(user.id);
+    const workspaceIds = activeWorkspace?.canWrite ? [activeWorkspace.id] : [];
     const templates = await prisma.entityTemplate.findMany({
       where: {
         archivedAt: null,

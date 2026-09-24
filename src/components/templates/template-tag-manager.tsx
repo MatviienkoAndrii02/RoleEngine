@@ -7,6 +7,7 @@ import { TEMPLATE_TAG_COLOR_COLUMNS, templateTagColorClass, type TemplateTagColo
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { localizedApiError } from "@/i18n/api-errors";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 import { useI18n } from "@/i18n/client";
 
 export function TemplateTagManager({
@@ -36,7 +37,7 @@ export function TemplateTagManager({
   async function request(url: string, options: RequestInit, fallbackKey: Parameters<typeof t>[0]) {
     setPending(url);
     setError(null);
-    const response = await fetch(url, options);
+    const response = await fetch(workspaceApiUrl(url), options);
     setPending(null);
     if (!response.ok) {
       setError(await localizedApiError(response, t, fallbackKey));
@@ -170,7 +171,7 @@ function TagRow({
 
   async function save() {
     setError(null);
-    const response = await fetch(`/api/templates/${templateId}/tags/${tag.id}`, {
+    const response = await fetch(workspaceApiUrl(`/api/templates/${templateId}/tags/${tag.id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, color }),

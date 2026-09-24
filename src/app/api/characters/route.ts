@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createCharacter } from "@/server/actions/characters";
-import { getActiveWorkspace, requireUser } from "@/server/authz";
+import { getActiveWorkspace, getRequestWorkspaceId, requireUser, requireUserWorkspace } from "@/server/authz";
 import { createCharacterCommandSchema } from "@/domain/validation";
 import { inputErrorResponse, parseJson } from "@/server/api-validation";
 
 export async function GET() {
   try {
     const user = await requireUser();
-    const activeWorkspace = await getActiveWorkspace(user.id);
+    const requestedWorkspaceId = await getRequestWorkspaceId();
+    const activeWorkspace = requestedWorkspaceId
+      ? await requireUserWorkspace(user.id, requestedWorkspaceId)
+      : await getActiveWorkspace(user.id);
     const characters = await prisma.character.findMany({
       where: {
         archivedAt: null,

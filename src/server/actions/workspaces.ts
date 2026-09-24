@@ -35,7 +35,7 @@ export async function selectWorkspace(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/templates");
   revalidatePath("/workspaces");
-  redirect("/");
+  redirect(`/workspaces/${parsed.workspaceId}`);
 }
 
 export async function createWorkspace(formData: FormData) {
@@ -74,7 +74,7 @@ export async function createWorkspace(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/templates");
   revalidatePath("/workspaces");
-  redirect("/workspaces");
+  redirect(`/workspaces/${workspace.id}`);
 }
 
 export async function updateWorkspace(formData: FormData) {

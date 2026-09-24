@@ -52,6 +52,10 @@ export function getDatabaseUrl(): string {
   return value;
 }
 
+export function getAdminLokiUrl(): string | null {
+  return optionalEnv("ADMIN_LOKI_URL");
+}
+
 function optionalEnv(name: string): string | null {
   const value = process.env[name]?.trim();
   return value ? value : null;

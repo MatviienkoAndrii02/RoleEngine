@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 import { useCharacterUiStore } from "@/store/character-ui-store";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 
 const VISIBLE_ENTRIES = 10;
 
@@ -43,7 +44,7 @@ export function JsonIntegrityPanel({
     setPending(pendingKey);
     setError(null);
     setSummary(null);
-    const send = () => fetch(endpoint, {
+    const send = () => fetch(workspaceApiUrl(endpoint), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -172,4 +173,3 @@ function formatTimestamp(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
-
