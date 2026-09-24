@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Save, Trash2, X } from "lucide-react";
 import { getNodeBreadcrumb, NODE_ICON_NAMES, type CharacterNodeModel, type NodeData, type NodeIconName, type NodeType } from "@/domain/nodes";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 import { TEMPLATE_TAG_COLOR_NAMES, type TemplateTagColorName } from "@/domain/template-tags";
 import { useCharacterUiStore } from "@/store/character-ui-store";
 import { Button } from "@/components/ui/button";
@@ -83,7 +84,7 @@ export function NodeEditor({
     };
     const response = await trackImpact(characterId, editing ? t("impact.nodeUpdated") : t("impact.nodeCreated"), () =>
       fetch(
-        editing ? `${apiBase}/${selected.id}` : apiBase,
+        workspaceApiUrl(editing ? `${apiBase}/${selected.id}` : apiBase),
         {
           method: editing ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -104,7 +105,7 @@ export function NodeEditor({
   async function remove() {
     if (!selected || !window.confirm(t("node.deleteConfirm", { name: selected.name }))) return;
     setPending(true);
-    const response = await trackImpact(characterId, t("impact.nodeDeleted"), () => fetch(`${apiBase}/${selected.id}`, { method: "DELETE" }));
+    const response = await trackImpact(characterId, t("impact.nodeDeleted"), () => fetch(workspaceApiUrl(`${apiBase}/${selected.id}`), { method: "DELETE" }));
     setPending(false);
     if (!response.ok) {
       setError(t("node.deleteFailed"));

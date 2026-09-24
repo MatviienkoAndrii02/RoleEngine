@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -30,7 +31,7 @@ export function CharacterLiveRefresh({
       if (pendingRef.current) return;
       pendingRef.current = true;
       try {
-        const response = await fetch(`/api/characters/${characterId}/version`, {
+        const response = await fetch(workspaceApiUrl(`/api/characters/${characterId}/version`), {
           cache: "no-store",
           credentials: "same-origin",
         });

@@ -6,6 +6,7 @@ import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 
 export function RestoreCharacterButton({ characterId, name }: { characterId: string; name: string }) {
   const router = useRouter();
@@ -17,7 +18,7 @@ export function RestoreCharacterButton({ characterId, name }: { characterId: str
     if (!window.confirm(t("common.restore") + ` "${name}"?`)) return;
     setPending(true);
     setError(null);
-    const response = await fetch(`/api/characters/${characterId}/restore`, { method: "POST" });
+    const response = await fetch(workspaceApiUrl(`/api/characters/${characterId}/restore`), { method: "POST" });
     setPending(false);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "common.restoreFailed"));

@@ -42,6 +42,7 @@ import {
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 import { useCharacterUiStore } from "@/store/character-ui-store";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 
 type EffectItem = EffectDefinition & { createdAt?: string | Date; updatedAt?: string | Date };
 type Operation = EffectDefinition["operation"];
@@ -66,7 +67,7 @@ export function EffectManager({ characterId, nodes, archivedNodes = [], effects,
     setPendingId(id);
     setError(null);
     const response = await trackImpact(characterId, t("impact.effectUpdated"), () =>
-      fetch(`/api/effects/${id}`, {
+      fetch(workspaceApiUrl(`/api/effects/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -84,7 +85,7 @@ export function EffectManager({ characterId, nodes, archivedNodes = [], effects,
   async function remove(effect: EffectItem) {
     if (!window.confirm(t("effect.deleteConfirm", { name: effect.name }))) return;
     setPendingId(effect.id);
-    const response = await trackImpact(characterId, t("impact.effectDeleted"), () => fetch(`/api/effects/${effect.id}`, { method: "DELETE" }));
+    const response = await trackImpact(characterId, t("impact.effectDeleted"), () => fetch(workspaceApiUrl(`/api/effects/${effect.id}`), { method: "DELETE" }));
     setPendingId(null);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "effect.deleteFailed"));

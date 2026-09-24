@@ -9,7 +9,7 @@ test("Player sees the assigned character without GM tooling", async ({ page }) =
   await expect(page.getByRole("link", { name: /Новий персонаж|New character/ })).toHaveCount(0);
 
   await page.getByRole("link", { name: /Mira Vale/ }).click();
-  await expect(page).toHaveURL(/\/characters\/demo-character$/);
+  await expect(page).toHaveURL(/\/workspaces\/legacy-workspace\/characters\/demo-character$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Mira Vale");
   await expect(page.getByText("Strength", { exact: true })).toBeVisible();
 
@@ -20,4 +20,7 @@ test("Player sees the assigned character without GM tooling", async ({ page }) =
 
   // Read-only panels remain available.
   await expect(page.locator('button[aria-controls="player-preview-dependencies-content"]')).toBeVisible();
+
+  const crossWorkspaceResponse = await page.request.get("/api/workspaces/not-a-member/characters/demo-character/version");
+  expect(crossWorkspaceResponse.status()).toBe(403);
 });

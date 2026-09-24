@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { localizedApiError } from "@/i18n/api-errors";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 import { useI18n } from "@/i18n/client";
 
 export function TemplateArchiveActions({ templateId, name }: { templateId: string; name: string }) {
@@ -16,7 +17,7 @@ export function TemplateArchiveActions({ templateId, name }: { templateId: strin
   async function restore() {
     setPending("restore");
     setError(null);
-    const response = await fetch(`/api/templates/${templateId}/restore`, { method: "POST" });
+    const response = await fetch(workspaceApiUrl(`/api/templates/${templateId}/restore`), { method: "POST" });
     setPending(null);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "template.restoreFailed"));
@@ -29,7 +30,7 @@ export function TemplateArchiveActions({ templateId, name }: { templateId: strin
     if (!window.confirm(t("template.permanentDeleteConfirm", { name }))) return;
     setPending("delete");
     setError(null);
-    const response = await fetch(`/api/templates/${templateId}?permanent=1`, { method: "DELETE" });
+    const response = await fetch(workspaceApiUrl(`/api/templates/${templateId}?permanent=1`), { method: "DELETE" });
     setPending(null);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "template.permanentDeleteFailed"));

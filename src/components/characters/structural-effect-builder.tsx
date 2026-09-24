@@ -21,6 +21,7 @@ import { clearFormDraft, stringDraftValue, useFormDraft } from "@/components/for
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 import { useCharacterUiStore } from "@/store/character-ui-store";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 
 type StructuralEffectBuilderProps =
   | { characterId: string; templateId?: never; nodes: CharacterNodeModel[]; slots?: never }
@@ -64,7 +65,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
     warnings: [t("effect.inlineTargetRequired")],
   }));
 
-  const endpoint = characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`;
+  const endpoint = workspaceApiUrl(characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`);
   const rootLabel = characterId ? t("common.rootCharacter") : t("common.rootTemplate");
   const containers = nodes.filter((node) => node.type === "CONTAINER" || node.type === "GROUP");
   const containerSlots = slots.filter((slot) => slot.acceptedTypes.some((type) => type === "CONTAINER" || type === "GROUP"));

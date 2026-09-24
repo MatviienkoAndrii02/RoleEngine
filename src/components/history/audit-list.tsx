@@ -5,6 +5,7 @@ import type { AuditAction, AuditLog } from "@prisma/client";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, ChevronDown, ChevronRight, ExternalLink, Link2, Loader2, Search } from "lucide-react";
 import type { CharacterNodeModel } from "@/domain/nodes";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 import type { EffectDefinition } from "@/domain/effects";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,7 +92,7 @@ export function AuditList({
         if (normalizedQuery) params.set("query", normalizedQuery);
         if (mode === "replace" && focusedAuditId) params.set("focusId", focusedAuditId);
 
-        const response = await fetch(`/api/characters/${characterId}/audit?${params.toString()}`);
+        const response = await fetch(workspaceApiUrl(`/api/characters/${characterId}/audit?${params.toString()}`));
         if (!response.ok) throw new Error("Failed to load audit history");
         const body = (await response.json()) as AuditListResponse;
 
