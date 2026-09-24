@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/server/errors";
-import { assertUserHasWorkspaceRole, assertWorkspaceRoleMembership, getUserWorkspaces } from "@/server/authz";
+import { assertUserHasWorkspaceRole, assertWorkspaceRoleMembership, getUserWorkspaces, requireCharacterGM, requireTemplateGM } from "@/server/authz";
 import { deleteCharacterNode, updateCharacterNode } from "@/server/actions/characters";
 import { deleteTemplateNode, updateTemplateNode } from "@/server/actions/templates";
 
@@ -77,6 +77,11 @@ describe("authz scope guards", () => {
     });
 
     await assert.rejects(
+      () => requireCharacterGM(character.id, { workspaceId: workspaceB.id }, { user: { id: actor.id } }),
+      (error: unknown) => error instanceof AppError && error.code === "NOT_FOUND",
+    );
+
+    await assert.rejects(
       () => assertUserHasWorkspaceRole(actor.id, workspaceB.id, ["OWNER", "GM"]),
       (error: unknown) => {
         assert.ok(error instanceof AppError);
@@ -119,6 +124,11 @@ describe("authz scope guards", () => {
         createdById: actor.id,
       },
     });
+
+    await assert.rejects(
+      () => requireTemplateGM(template.id, { workspaceId: workspaceB.id }, { user: { id: actor.id } }),
+      (error: unknown) => error instanceof AppError && error.code === "NOT_FOUND",
+    );
 
     await assert.rejects(
       () => assertUserHasWorkspaceRole(actor.id, workspaceB.id, ["OWNER", "GM"]),

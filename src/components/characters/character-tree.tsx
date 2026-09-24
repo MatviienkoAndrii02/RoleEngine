@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getNodeBreadcrumb, type NodeTreeItem } from "@/domain/nodes";
 import { templateTagColorLineClass } from "@/domain/template-tags";
 import { useCharacterUiStore } from "@/store/character-ui-store";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -93,7 +94,7 @@ function TreeRow({ characterId, node, depth, editorSectionId, forceExpanded, man
     setRunningEffectId(trigger.effectId);
     setRunError(null);
     const response = await trackImpact(characterId, t("impact.triggerRun"), () =>
-      fetch(`/api/effects/${trigger.effectId}/run`, {
+      fetch(workspaceApiUrl(`/api/effects/${trigger.effectId}/run`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nodeId: node.id }),

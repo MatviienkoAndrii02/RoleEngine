@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CopyPlus } from "lucide-react";
 import type { CharacterNodeModel } from "@/domain/nodes";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 import type { TemplateSlotModel } from "@/domain/template-slots";
 import { Button } from "@/components/ui/button";
 import { NodePicker } from "@/components/characters/node-picker";
@@ -41,7 +42,7 @@ export function ApplyTemplate({
     setPending(true);
     setMessage(null);
     const response = await trackImpact(characterId, t("impact.templateApplied"), () =>
-      fetch(`/api/characters/${characterId}/templates`, {
+      fetch(workspaceApiUrl(`/api/characters/${characterId}/templates`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

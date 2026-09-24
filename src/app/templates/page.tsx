@@ -1,22 +1,29 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TemplateArchiveActions } from "@/components/templates/template-archive-actions";
 import { requirePageGM } from "@/server/page-auth";
-import { getActiveWritableWorkspace } from "@/server/authz";
+import { getActiveWritableWorkspace, requireUserWorkspace } from "@/server/authz";
 import { getTranslator } from "@/i18n/server";
 import { templateTagColorClass } from "@/domain/template-tags";
 
-export default async function TemplatesPage({ searchParams }: { searchParams?: Promise<{ archived?: string }> }) {
-  const user = await requirePageGM("/templates");
-  const params = await searchParams;
+export default async function TemplatesPage({ params, searchParams }: { params?: Promise<{ workspaceId?: string }>; searchParams?: Promise<{ archived?: string }> }) {
+  const routeParams = await params;
+  const workspaceId = routeParams?.workspaceId;
+  const user = await requirePageGM(workspaceId ? `/workspaces/${workspaceId}/templates` : "/templates");
+  const queryParams = await searchParams;
   const { t } = await getTranslator();
-  const showArchived = params?.archived === "1";
-  const activeWorkspace = await getActiveWritableWorkspace(user.id);
-  const workspaceIds = activeWorkspace ? [activeWorkspace.id] : [];
+  const showArchived = queryParams?.archived === "1";
+  const activeWorkspace = workspaceId
+    ? await requireUserWorkspace(user.id, workspaceId)
+    : await getActiveWritableWorkspace(user.id);
+  const writableWorkspace = activeWorkspace?.canWrite ? activeWorkspace : null;
+  if (!workspaceId && writableWorkspace) redirect(`/workspaces/${writableWorkspace.id}/templates${showArchived ? "?archived=1" : ""}`);
+  const workspaceIds = writableWorkspace ? [writableWorkspace.id] : [];
   const templates = await prisma.entityTemplate
     .findMany({
       where: {
@@ -31,17 +38,17 @@ export default async function TemplatesPage({ searchParams }: { searchParams?: P
     .catch(() => []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-workspace-context={writableWorkspace?.id}>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{t("nav.templates")}</h1>
           <p className="text-sm text-muted-foreground">{showArchived ? t("template.archivedSubtitle") : t("template.listSubtitle")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant={showArchived ? "outline" : "ghost"}><Link href={showArchived ? "/templates" : "/templates?archived=1"}>
+          <Button asChild variant={showArchived ? "outline" : "ghost"}><Link href={showArchived ? (writableWorkspace ? `/workspaces/${writableWorkspace.id}/templates` : "/templates") : (writableWorkspace ? `/workspaces/${writableWorkspace.id}/templates?archived=1` : "/templates?archived=1")}>
             {showArchived ? t("template.activeTemplates") : t("template.archivedTemplates")}
           </Link></Button>
-          {!showArchived && <Button asChild><Link href="/templates/new">
+          {!showArchived && writableWorkspace && <Button asChild><Link href={`/workspaces/${writableWorkspace.id}/templates/new`}>
             <Plus className="h-4 w-4" />
             {t("template.new")}
           </Link></Button>}
@@ -79,7 +86,7 @@ export default async function TemplatesPage({ searchParams }: { searchParams?: P
                 </CardContent>
               </Card>
             ) : (
-              <Link key={template.id} href={`/templates/${template.id}`}><Card className="h-full transition-colors hover:bg-muted/60">
+              <Link key={template.id} href={writableWorkspace ? `/workspaces/${writableWorkspace.id}/templates/${template.id}` : `/templates/${template.id}`}><Card className="h-full transition-colors hover:bg-muted/60">
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <CardTitle>{template.name}</CardTitle>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { buildNodeTree } from "@/domain/nodes";
 import { parseAcceptedNodeTypes } from "@/domain/template-slots";
@@ -24,13 +25,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getTranslator } from "@/i18n/server";
 
-export default async function TemplatePage({ params }: { params: Promise<{ templateId: string }> }) {
-  const { templateId } = await params;
-  await requirePageGM(`/templates/${templateId}`);
-  await requireTemplateGM(templateId);
+export default async function TemplatePage({ params }: { params: Promise<{ templateId: string; workspaceId?: string }> }) {
+  const { templateId, workspaceId } = await params;
+  await requirePageGM(workspaceId ? `/workspaces/${workspaceId}/templates/${templateId}` : `/templates/${templateId}`);
+  await requireTemplateGM(templateId, { workspaceId });
   const { t } = await getTranslator();
   const template = await prisma.entityTemplate.findFirst({ where: { id: templateId, archivedAt: null }, include: { nodes: { orderBy: [{ parentId: "asc" }, { order: "asc" }] }, effects: { orderBy: { priority: "asc" } }, slots: { orderBy: { createdAt: "asc" } }, tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } }, _count: { select: { effects: true } } } });
   if (!template) notFound();
+  if (!workspaceId && template.workspaceId) redirect(`/workspaces/${template.workspaceId}/templates/${template.id}`);
   const allTags = template.workspaceId
     ? await prisma.templateTag.findMany({ where: { workspaceId: template.workspaceId, archivedAt: null }, orderBy: { name: "asc" } })
     : [];
@@ -61,8 +63,8 @@ export default async function TemplatePage({ params }: { params: Promise<{ templ
     name: item.name,
     tags: item.tags.map((tagLink) => ({ id: tagLink.tag.id, name: tagLink.tag.name, color: parseTemplateTagColor(tagLink.tag.color) })),
   }));
-  return <div className="space-y-6">
-    <Button asChild variant="ghost"><Link href="/templates"><ArrowLeft className="h-4 w-4" />{t("template.back")}</Link></Button>
+  return <div className="space-y-6" data-workspace-context={template.workspaceId ?? undefined}>
+    <Button asChild variant="ghost"><Link href={template.workspaceId ? `/workspaces/${template.workspaceId}/templates` : "/templates"}><ArrowLeft className="h-4 w-4" />{t("template.back")}</Link></Button>
     <div><div className="flex items-center gap-2"><h1 className="text-2xl font-semibold">{template.name}</h1>{template.isDefaultCharacter && <Badge className="bg-accent text-accent-foreground">{t("template.defaultCharacter")}</Badge>}</div><p className="text-sm text-muted-foreground">{t("template.editHint")}</p></div>
     {diagnostics.length > 0 && (
       <PersistedJsonDiagnostics

@@ -8,6 +8,7 @@ import type { TemplateSlotDirection, TemplateSlotModel } from "@/domain/template
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { localizedApiError } from "@/i18n/api-errors";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 import { useI18n } from "@/i18n/client";
 
 const nodeTypes: NodeType[] = ["NUMBER", "BAR", "TEXT", "TABLE", "CONTAINER", "GROUP", "LINK"];
@@ -33,7 +34,7 @@ export function TemplateSlotManager({ templateId, slots }: { templateId: string;
       acceptedTypes,
       required: formData.get("required") === "on",
     };
-    const response = await fetch(editing ? `/api/templates/${templateId}/slots/${editing.id}` : `/api/templates/${templateId}/slots`, {
+    const response = await fetch(workspaceApiUrl(editing ? `/api/templates/${templateId}/slots/${editing.id}` : `/api/templates/${templateId}/slots`), {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -51,7 +52,7 @@ export function TemplateSlotManager({ templateId, slots }: { templateId: string;
     if (!window.confirm(t("templateSlot.deleteConfirm", { label: slot.label }))) return;
     setPending(true);
     setError(null);
-    const response = await fetch(`/api/templates/${templateId}/slots/${slot.id}`, { method: "DELETE" });
+    const response = await fetch(workspaceApiUrl(`/api/templates/${templateId}/slots/${slot.id}`), { method: "DELETE" });
     setPending(false);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "templateSlot.deleteFailed"));

@@ -22,6 +22,7 @@ import { NodeArchive, type ArchivedNodeItem } from "@/components/characters/node
 import { AuditList } from "@/components/history/audit-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canReadCharacter } from "@/server/authz";
+import { redirect } from "next/navigation";
 import { requirePageUser } from "@/server/page-auth";
 import { resolveCharacterNodeLinks } from "@/server/node-links";
 import { getJsonIntegrityReport } from "@/server/json-integrity";
@@ -32,14 +33,14 @@ import { latestDate } from "@/server/character-version";
 
 const INITIAL_AUDIT_LIMIT = 25;
 
-export default async function CharacterPage({ params }: { params: Promise<{ characterId: string }> }) {
-  const { characterId } = await params;
-  const user = await requirePageUser(`/characters/${characterId}`);
+export default async function CharacterPage({ params }: { params: Promise<{ characterId: string; workspaceId?: string }> }) {
+  const { characterId, workspaceId } = await params;
+  const user = await requirePageUser(workspaceId ? `/workspaces/${workspaceId}/characters/${characterId}` : `/characters/${characterId}`);
   const { t } = await getTranslator();
-  await canReadCharacter(characterId);
+  await canReadCharacter(characterId, workspaceId);
   const data = await prisma.character
     .findFirst({
-      where: { id: characterId, archivedAt: null },
+      where: { id: characterId, ...(workspaceId ? { workspaceId } : {}), archivedAt: null },
       include: {
         rootNodes: { where: { archivedAt: null }, orderBy: [{ parentId: "asc" }, { order: "asc" }] },
         effects: { orderBy: { priority: "asc" } },
@@ -66,6 +67,8 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
       </Card>
     );
   }
+  if (!workspaceId) redirect(`/workspaces/${data.workspaceId}/characters/${data.id}`);
+  if (!workspaceId) redirect(`/workspaces/${data.workspaceId}/characters/${data.id}`);
 
   const parsedNodes = parseCharacterNodeModels(data.rootNodes);
   const parsedEffects = parseEffectDefinitions(data.effects);
@@ -230,7 +233,7 @@ export default async function CharacterPage({ params }: { params: Promise<{ char
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-workspace-context={data.workspaceId}>
       <CharacterLiveRefresh characterId={characterId} initialVersion={initialVersion} enabled={!canEdit} />
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 import type { NodeType } from "@/domain/nodes";
 import { compareImpactSnapshots, hasImpact, type CharacterImpactReport, type CharacterImpactSnapshot } from "@/domain/character-impact";
 
@@ -130,7 +131,7 @@ export const useCharacterUiStore = create<CharacterUiState>((set) => ({
 }));
 
 async function fetchImpactSnapshot(characterId: string): Promise<CharacterImpactSnapshot> {
-  const response = await fetch(`/api/characters/${characterId}/impact`, { cache: "no-store" });
+  const response = await fetch(workspaceApiUrl(`/api/characters/${characterId}/impact`), { cache: "no-store" });
   if (!response.ok) throw new Error("Could not load character impact snapshot");
   return response.json() as Promise<CharacterImpactSnapshot>;
 }

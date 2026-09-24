@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 
-export function TemplateForm({ template }: { template?: { id: string; name: string; description: string | null; isDefaultCharacter: boolean } }) {
+export function TemplateForm({ template }: { template?: { id: string; workspaceId: string | null; name: string; description: string | null; isDefaultCharacter: boolean } }) {
   const { t } = useI18n();
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -22,23 +23,23 @@ export function TemplateForm({ template }: { template?: { id: string; name: stri
       description: formData.get("description"),
       isDefaultCharacter: formData.get("isDefaultCharacter") === "on"
     };
-    const response = await fetch(template ? `/api/templates/${template.id}` : "/api/templates", {
+    const response = await fetch(workspaceApiUrl(template ? `/api/templates/${template.id}` : "/api/templates"), {
       method: template ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
     setPending(false);
     if (!response.ok) return setError(await localizedApiError(response, t, "template.saveFailed"));
-    const saved = (await response.json()) as { id: string };
-    if (!template) router.push(`/templates/${saved.id}`);
+    const saved = (await response.json()) as { id: string; workspaceId: string | null };
+    if (!template && saved.workspaceId) router.push(`/workspaces/${saved.workspaceId}/templates/${saved.id}`);
     router.refresh();
   }
 
   async function archive() {
     if (!template || !window.confirm(t("template.archiveConfirm", { name: template.name }))) return;
     setPending(true);
-    const response = await fetch(`/api/templates/${template.id}`, { method: "DELETE" });
-    if (response.ok) router.push("/templates");
+    const response = await fetch(workspaceApiUrl(`/api/templates/${template.id}`), { method: "DELETE" });
+    if (response.ok) router.push(template.workspaceId ? `/workspaces/${template.workspaceId}/templates` : "/templates");
     else { setPending(false); setError(await localizedApiError(response, t, "template.archiveFailed")); }
   }
 

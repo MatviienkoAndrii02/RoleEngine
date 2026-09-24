@@ -7,6 +7,7 @@ import type { CharacterNodeModel } from "@/domain/nodes";
 import { Button } from "@/components/ui/button";
 import { NodePicker } from "@/components/characters/node-picker";
 import { TemplateFilterSelect, type TemplatePickerOption } from "@/components/templates/template-filter-select";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 import { useI18n } from "@/i18n/client";
 
 export function ApplyTemplateToTemplate({
@@ -35,7 +36,7 @@ export function ApplyTemplateToTemplate({
   async function submit() {
     setPending(true);
     setMessage(null);
-    const response = await fetch(`/api/templates/${templateId}/templates`, {
+    const response = await fetch(workspaceApiUrl(`/api/templates/${templateId}/templates`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

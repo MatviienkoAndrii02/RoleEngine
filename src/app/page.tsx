@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { RestoreCharacterButton } from "@/components/characters/restore-character-button";
 import { DashboardControls } from "@/components/dashboard/dashboard-controls";
 import { requirePageUser } from "@/server/page-auth";
-import { getActiveWorkspace } from "@/server/authz";
+import { getActiveWorkspace, requireUserWorkspace } from "@/server/authz";
 import { getTranslator } from "@/i18n/server";
 
 const PAGE_SIZE = 12;
@@ -100,26 +101,34 @@ function getCharacterWhere(
   return filters.length === 1 ? filters[0] : { AND: filters };
 }
 
-function dashboardHref(params: { q: string; owner: string; sort: DashboardSort }, page: number) {
+function dashboardHref(params: { q: string; owner: string; sort: DashboardSort }, page: number, workspaceId?: string) {
   const query = new URLSearchParams();
   if (params.q) query.set("q", params.q);
   if (params.owner !== "all") query.set("owner", params.owner);
   if (params.sort !== "updated") query.set("sort", params.sort);
   if (page > 1) query.set("page", String(page));
   const serialized = query.toString();
-  return serialized ? `/?${serialized}` : "/";
+  const base = workspaceId ? `/workspaces/${workspaceId}` : "/";
+  return serialized ? `${base}?${serialized}` : base;
 }
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<DashboardSearchParams> }) {
-  const user = await requirePageUser("/");
+export default async function DashboardPage({ params, searchParams }: { params?: Promise<{ workspaceId?: string }>; searchParams: Promise<DashboardSearchParams> }) {
+  const routeParams = await params;
+  const workspaceId = routeParams?.workspaceId;
+  const user = await requirePageUser(workspaceId ? `/workspaces/${workspaceId}` : "/");
   const { t } = await getTranslator();
-  const params = await searchParams;
-  const query = normalizeQuery(params.q);
-  const sort = normalizeSort(params.sort);
-  const activeWorkspace = await getActiveWorkspace(user.id);
+  const queryParams = await searchParams;
+  const query = normalizeQuery(queryParams.q);
+  const sort = normalizeSort(queryParams.sort);
+  const activeWorkspace = workspaceId
+    ? await requireUserWorkspace(user.id, workspaceId)
+    : await getActiveWorkspace(user.id);
+  if (!workspaceId && activeWorkspace) {
+    redirect(dashboardHref({ q: query, owner: activeWorkspace.canWrite ? queryParams.owner ?? "all" : "all", sort }, normalizePage(queryParams.page), activeWorkspace.id));
+  }
   const hasWritableWorkspace = Boolean(activeWorkspace?.canWrite);
-  const ownerFilter = hasWritableWorkspace ? params.owner ?? "all" : "all";
-  const page = normalizePage(params.page);
+  const ownerFilter = hasWritableWorkspace ? queryParams.owner ?? "all" : "all";
+  const page = normalizePage(queryParams.page);
   const where = getCharacterWhere(user, query, ownerFilter, activeWorkspace);
 
   const [totalCharacters, players] = await Promise.all([
@@ -148,8 +157,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const activeParams = { q: query, owner: ownerFilter, sort };
 
   return (
-    <div className="space-y-6">
-      {params.forbidden === "gm" && (
+    <div className="space-y-6" data-workspace-context={activeWorkspace?.id}>
+      {queryParams.forbidden === "gm" && (
         <div className="rounded-md border border-accent bg-accent/10 p-3 text-sm">
           {t("dashboard.forbiddenGM")}
         </div>
@@ -159,7 +168,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <h1 className="text-2xl font-semibold">{t("dashboard.title")}</h1>
           <p className="text-sm text-muted-foreground">{t("dashboard.subtitle")}</p>
         </div>
-        {hasWritableWorkspace && <Button asChild><Link href="/characters/new"><Plus className="h-4 w-4" />{t("dashboard.newCharacter")}</Link></Button>}
+        {hasWritableWorkspace && <Button asChild><Link href={activeWorkspace ? `/workspaces/${activeWorkspace.id}/characters/new` : "/characters/new"}><Plus className="h-4 w-4" />{t("dashboard.newCharacter")}</Link></Button>}
       </div>
 
       <DashboardControls
@@ -215,7 +224,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             return character.archivedAt ? (
               <div key={character.id}>{card}</div>
             ) : (
-              <Link key={character.id} href={`/characters/${character.id}`}>
+              <Link key={character.id} href={activeWorkspace ? `/workspaces/${activeWorkspace.id}/characters/${character.id}` : `/characters/${character.id}`}>
                 {card}
               </Link>
             );
@@ -228,7 +237,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <Button asChild variant="outline" aria-disabled={currentPage <= 1}>
             <Link
               className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-              href={dashboardHref(activeParams, currentPage - 1)}
+              href={dashboardHref(activeParams, currentPage - 1, activeWorkspace?.id)}
             >
               {t("dashboard.previous")}
             </Link>
@@ -239,7 +248,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <Button asChild variant="outline" aria-disabled={currentPage >= totalPages}>
             <Link
               className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
-              href={dashboardHref(activeParams, currentPage + 1)}
+              href={dashboardHref(activeParams, currentPage + 1, activeWorkspace?.id)}
             >
               {t("dashboard.next")}
             </Link>

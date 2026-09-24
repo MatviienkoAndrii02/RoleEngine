@@ -23,6 +23,7 @@ import {
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 import { useCharacterUiStore } from "@/store/character-ui-store";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 
 type TriggeredEffectBuilderProps =
   | { characterId: string; templateId?: never; nodes: CharacterNodeModel[]; slots?: never }
@@ -36,7 +37,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
   const { t } = useI18n();
   const router = useRouter();
   const trackImpact = useCharacterUiStore((state) => state.trackImpact);
-  const endpoint = characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`;
+  const endpoint = workspaceApiUrl(characterId ? `/api/characters/${characterId}/effects` : `/api/templates/${templateId}/effects`);
   const draftKey = `effect:triggered:${characterId ? `character:${characterId}` : `template:${templateId}`}`;
   const numericNodes = nodes.filter((node) => node.type === "NUMBER" || node.type === "BAR");
   const containers = nodes.filter((node) => node.type === "CONTAINER" || node.type === "GROUP");

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { localizedApiError } from "@/i18n/api-errors";
 import { useI18n } from "@/i18n/client";
 import { useCharacterUiStore } from "@/store/character-ui-store";
+import { workspaceApiUrl } from "@/domain/workspace-api-url";
 
 export type ArchivedNodeItem = {
   id: string;
@@ -27,7 +28,7 @@ export function NodeArchive({ characterId, items }: { characterId: string; items
     if (!window.confirm(t("nodeArchive.restoreConfirm", { name: item.name }))) return;
     setPendingId(item.id);
     setError(null);
-    const response = await trackImpact(characterId, t("impact.nodeRestored"), () => fetch(`/api/characters/${characterId}/nodes/${item.id}/restore`, { method: "POST" }));
+    const response = await trackImpact(characterId, t("impact.nodeRestored"), () => fetch(workspaceApiUrl(`/api/characters/${characterId}/nodes/${item.id}/restore`), { method: "POST" }));
     setPendingId(null);
     if (!response.ok) {
       setError(await localizedApiError(response, t, "common.restoreFailed"));
