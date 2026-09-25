@@ -96,6 +96,7 @@ export type AdminLogEntry = {
   level: "debug" | "info" | "warn" | "error";
   event: string | null;
   message: string;
+  fullLog: string;
 };
 
 export type AdminLogsResponse = {
@@ -181,7 +182,8 @@ export function isAdminLogsResponse(value: unknown): value is AdminLogsResponse 
     && typeof entry.service === "string"
     && (entry.level === "debug" || entry.level === "info" || entry.level === "warn" || entry.level === "error")
     && (entry.event === null || typeof entry.event === "string")
-    && typeof entry.message === "string");
+    && typeof entry.message === "string"
+    && typeof entry.fullLog === "string");
 }
 
 export function isAdminOverviewResponse(value: unknown): value is AdminOverviewResponse {

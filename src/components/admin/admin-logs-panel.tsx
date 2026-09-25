@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import type { AdminLogsResponse, AdminLogsSource } from "@/domain/admin-console";
 import { isAdminLogsResponse } from "@/domain/admin-console";
 import { Button } from "@/components/ui/button";
@@ -125,16 +125,23 @@ export function AdminLogsPanel() {
             <p className="py-8 text-center text-sm text-muted-foreground">{t("admin.logs.empty")}</p>
           )}
           {visibleLogs.map((entry, index) => (
-            <article key={`${entry.timestamp}-${entry.service}-${index}`} className="grid gap-2 rounded-md border p-3 md:grid-cols-[190px_70px_150px_minmax(0,1fr)] md:items-start">
-              <time className="text-xs text-muted-foreground" dateTime={entry.timestamp}>
-                {dateFormatter.format(new Date(entry.timestamp))}
-              </time>
-              <span className={`text-xs font-semibold uppercase ${entry.level === "error" ? "text-destructive" : entry.level === "warn" ? "text-amber-600" : "text-muted-foreground"}`}>
-                {entry.level}
-              </span>
-              <span className="break-all text-xs text-muted-foreground">{entry.service}{entry.event ? ` · ${entry.event}` : ""}</span>
-              <pre className="whitespace-pre-wrap break-words font-mono text-xs">{entry.message}</pre>
-            </article>
+            <details key={`${entry.timestamp}-${entry.service}-${index}`} className="group min-w-0 rounded-md border p-3">
+              <summary className="grid cursor-pointer list-none items-start gap-2 text-left [&::-webkit-details-marker]:hidden md:grid-cols-[190px_70px_150px_minmax(0,1fr)_auto]">
+                <time className="text-xs text-muted-foreground" dateTime={entry.timestamp}>
+                  {dateFormatter.format(new Date(entry.timestamp))}
+                </time>
+                <span className={`text-xs font-semibold uppercase ${entry.level === "error" ? "text-destructive" : entry.level === "warn" ? "text-amber-600" : "text-muted-foreground"}`}>
+                  {entry.level}
+                </span>
+                <span className="break-all text-xs text-muted-foreground">{entry.service}{entry.event ? ` · ${entry.event}` : ""}</span>
+                <span className="line-clamp-1 break-all font-mono text-xs">{entry.message}</span>
+                <ChevronDown aria-hidden="true" className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-3 min-w-0 border-t pt-3">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">{t("admin.logs.fullEntry")}</p>
+                <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words font-mono text-xs">{entry.fullLog}</pre>
+              </div>
+            </details>
           ))}
         </CardContent>
       </Card>

@@ -5,6 +5,7 @@ import { logEvent } from "@/server/logger";
 
 const allowedRanges = ["15m", "1h", "6h", "24h"] as const;
 const maxEntries = 200;
+const sensitiveField = /password|secret|token|authorization|cookie|database_url|connection_string/i;
 type AdminLogRange = (typeof allowedRanges)[number];
 
 export async function getAdminLogs(input: { range: string; source: string }): Promise<{
@@ -104,22 +105,34 @@ function parseLokiEntries(value: unknown): AdminLogEntry[] {
   return entries.sort((left, right) => right.timestamp.localeCompare(left.timestamp));
 }
 
-function parseLogLine(line: string, service: string, timestamp: string): AdminLogEntry {
+export function parseLogLine(line: string, service: string, timestamp: string): AdminLogEntry {
   try {
     const value: unknown = JSON.parse(line);
     if (isRecord(value)) {
+      const fullLog = JSON.stringify(redactLogFields(value), null, 2);
       return {
         timestamp: typeof value.timestamp === "string" ? value.timestamp : timestamp,
         service: typeof value.service === "string" ? value.service : service,
         level: normalizeLevel(value.level),
         event: typeof value.event === "string" ? value.event : null,
-        message: typeof value.message === "string" ? value.message : typeof value.event === "string" ? value.event : line,
+        message: typeof value.message === "string" ? value.message : typeof value.event === "string" ? value.event : fullLog,
+        fullLog,
       };
     }
   } catch {
     // Framework and runtime logs are often plain text rather than JSON.
   }
-  return { timestamp, service, level: "info", event: null, message: line.slice(0, 12_000) };
+  const fullLog = line.slice(0, 12_000);
+  return { timestamp, service, level: "info", event: null, message: fullLog, fullLog };
+}
+
+function redactLogFields(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactLogFields);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, fieldValue]) => [
+    key,
+    sensitiveField.test(key) ? "[REDACTED]" : redactLogFields(fieldValue),
+  ]));
 }
 
 function normalizeLevel(value: unknown): AdminLogEntry["level"] {
