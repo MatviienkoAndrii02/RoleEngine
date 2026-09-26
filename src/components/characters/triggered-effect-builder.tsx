@@ -169,7 +169,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
         )}
         <EffectConditionBuilder nodes={numericNodes} slots={numericSlots} prefix="trigger" onConditionChange={refreshPreview} showValidationErrors={validationAttempted} />
       </EffectEditorSection>
-      <EffectEditorSection title={t("effect.triggerActions")} summary={t("effect.actionsCount", { count: rows.length })} error={actionError}>
+      <EffectEditorSection title={t("effect.triggerActions")} summary={t("effect.actionsCount", { count: rows.length })} error={actionError} defaultOpen={false}>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">{t("effect.actionsCount", { count: rows.length })}</p>
           <Button type="button" variant="outline" size="sm" onClick={() => setRows((current) => [...current, newTriggeredActionRow()])}>
@@ -192,6 +192,7 @@ export function TriggeredEffectBuilder({ characterId, templateId, nodes, slots =
             rootLabel={templateId ? t("common.rootTemplate") : t("common.rootCharacter")}
             fieldNamespace="action"
             setRows={setRows}
+            defaultOpen={index === 0}
             showValidationErrors={validationAttempted}
           />
         ))}

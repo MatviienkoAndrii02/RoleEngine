@@ -202,7 +202,7 @@ export function StructuralEffectBuilder({ characterId, templateId, nodes, slots 
         </div>
       )}
       <Input name="name" required placeholder={t("effect.name")} />
-      <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
+      <EffectEditorSection title={t("effect.condition")} summary={preview.condition} defaultOpen={false}>
         <EffectConditionBuilder nodes={nodes} slots={slots} onConditionChange={refreshPreview} showValidationErrors={validationAttempted} />
       </EffectEditorSection>
       <EffectEditorSection title={t("effect.action")} summary={actionSummary} error={targetError}>

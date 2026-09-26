@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { conditionExpressionSummary } from "@/components/characters/effect-summary";
 import { NodePicker } from "@/components/characters/node-picker";
+import { useCharacterUiStore } from "@/store/character-ui-store";
 import { useI18n } from "@/i18n/client";
 
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
@@ -30,6 +31,9 @@ export function EffectConditionBuilder({
   showValidationErrors?: boolean;
 }) {
   const { t } = useI18n();
+  const nodePickRequest = useCharacterUiStore((state) => state.nodePickRequest);
+  const cancelNodePick = useCharacterUiStore((state) => state.cancelNodePick);
+  const pickingFromTree = nodePickRequest !== null;
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<EffectCondition>(() => condition ?? { kind: "always" });
   const slotOptions = slots.map((slot) => ({ value: `slot:${slot.id}`, label: t("templateSlot.option", { label: slot.label }) }));
@@ -57,9 +61,21 @@ export function EffectConditionBuilder({
       </div>
 
       {open && (
-        <div className="fixed inset-y-0 right-0 z-50 flex w-[min(100vw,520px)] max-w-full p-3 pointer-events-none">
-          <div className="flex min-h-0 w-full flex-col rounded-md border bg-card shadow-lg pointer-events-auto">
-            <div className="flex items-start justify-between gap-3 border-b p-4">
+        <div
+          className={`fixed inset-0 z-50 flex justify-end sm:p-3 ${pickingFromTree ? "pointer-events-none" : "bg-black/40"}`}
+          role={pickingFromTree ? undefined : "dialog"}
+          aria-modal={pickingFromTree ? undefined : true}
+          aria-label={pickingFromTree ? undefined : t("effect.conditionBuilder")}
+          aria-hidden={pickingFromTree}
+        >
+          {pickingFromTree && (
+            <div className="pointer-events-auto absolute left-1/2 top-[max(1rem,env(safe-area-inset-top))] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center justify-between gap-3 rounded-md border bg-card p-3 text-sm shadow-lg">
+              <span className="min-w-0 flex-1 break-words">{t("node.pickMode")}</span>
+              <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={cancelNodePick}>{t("common.cancel")}</Button>
+            </div>
+          )}
+          <div className={`flex min-h-0 w-full flex-col bg-card shadow-lg sm:max-w-[560px] sm:rounded-md sm:border ${pickingFromTree ? "invisible" : ""}`}>
+            <div className="flex items-start justify-between gap-3 border-b p-4 pt-[max(1rem,env(safe-area-inset-top))]">
               <div>
                 <h3 className="font-medium">{t("effect.conditionBuilder")}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">{summary}</p>
@@ -76,7 +92,7 @@ export function EffectConditionBuilder({
                 showValidationErrors={showValidationErrors}
               />
             </div>
-            <div className="flex justify-between gap-2 border-t p-4">
+            <div className="flex justify-between gap-2 border-t p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <Button type="button" variant="ghost" onClick={() => setDraft({ kind: "always" })}>
                 {t("effect.clearCondition")}
               </Button>
@@ -437,12 +453,23 @@ function RecursiveConditionEditor({
   depth?: number;
 }) {
   const { t } = useI18n();
+  const [expanded, setExpanded] = useState(depth === 0);
   const groupKind = condition.kind === "and" || condition.kind === "or" || condition.kind === "not" ? condition.kind : "";
   const children = conditionChildren(condition);
 
   if (condition.kind === "and" || condition.kind === "or" || condition.kind === "not") {
+    if (depth > 0 && !expanded) {
+      return (
+        <button type="button" className="w-full rounded-md border bg-muted/20 p-3 text-left" onClick={() => setExpanded(true)}>
+          <span className="block text-sm font-medium">{t(groupKind === "and" ? "effect.conditionAnd" : groupKind === "or" ? "effect.conditionOr" : "effect.conditionNot")}</span>
+          <span className="mt-1 block line-clamp-2 break-words text-xs text-muted-foreground">
+            {conditionExpressionSummary(condition, nodes, slots, t)}
+          </span>
+        </button>
+      );
+    }
     return (
-      <div className="space-y-3 rounded-md border bg-background p-3" style={{ marginLeft: depth ? 12 : 0 }}>
+      <div className="space-y-3 rounded-md border bg-background p-3">
         <div className="flex flex-wrap items-center gap-2">
           <select value={groupKind} onChange={(event) => onChange(convertConditionKind(condition, event.target.value))} className={selectClass}>
             <option value="and">{t("effect.conditionAnd")}</option>
@@ -452,6 +479,7 @@ function RecursiveConditionEditor({
           <Button type="button" variant="outline" size="sm" onClick={() => onChange(makeLeafCondition("compare"))}>
             {t("effect.convertToCondition")}
           </Button>
+          {depth > 0 && <Button type="button" variant="ghost" size="sm" onClick={() => setExpanded(false)}>{t("common.collapse")}</Button>}
         </div>
         <div className="space-y-2 border-l-2 border-primary/30 pl-3">
           {children.map((child, index) => (
@@ -488,12 +516,17 @@ function RecursiveConditionEditor({
   }
 
   return (
-    <div className="space-y-2 rounded-md border bg-background p-3" style={{ marginLeft: depth ? 12 : 0 }}>
+    <div className="space-y-2 rounded-md border bg-background p-3">
       <div className="flex flex-wrap items-center gap-2">
         <ConditionKind value={conditionKind(condition)} onChange={(value) => onChange(makeLeafCondition(value, condition))} />
-        <Button type="button" variant="outline" size="sm" onClick={() => onChange({ kind: "and", conditions: [condition, makeLeafCondition("compare")] })}>
-          {t("effect.wrapCondition")}
-        </Button>
+        <details className="group">
+          <summary className="cursor-pointer list-none rounded-md border px-3 py-2 text-sm text-muted-foreground">{t("effect.advancedOptions")}</summary>
+          <div className="mt-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => onChange({ kind: "and", conditions: [condition, makeLeafCondition("compare")] })}>
+              {t("effect.wrapCondition")}
+            </Button>
+          </div>
+        </details>
       </div>
       <ConditionLeafFields condition={condition} nodes={nodes} slotOptions={slotOptions} slots={slots} onChange={onChange} showValidationErrors={showValidationErrors} />
     </div>

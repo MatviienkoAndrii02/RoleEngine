@@ -130,7 +130,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
         </div>
       )}
       <Input name="name" required placeholder={t("effect.name")} />
-      <EffectEditorSection title={t("effect.condition")} summary={t("effect.conditionAlways")}>
+      <EffectEditorSection title={t("effect.condition")} summary={preview.condition} defaultOpen={false}>
         <EffectConditionBuilder nodes={numeric} slots={numericSlots} onConditionChange={refreshPreview} showValidationErrors={validationAttempted} />
       </EffectEditorSection>
       <EffectEditorSection title={t("effect.target")} summary={targetSummary} error={targetError}>
@@ -151,7 +151,7 @@ export function NumericEffectBuilder({ characterId, templateId, nodes, slots = [
           <Select name="operation" value={operation} onChange={(value) => setOperation(value as NumericOperation)}><option value="ADD">{t("effect.add")}</option><option value="SUBTRACT">{t("effect.subtract")}</option><option value="MULTIPLY">{t("effect.multiply")}</option><option value="PERCENT_BONUS">{t("effect.percentBonus")}</option><option value="SET_BAR_MAX">{t("effect.setNumericField")}</option></Select>
         </div>
       </EffectEditorSection>
-      <EffectEditorSection title={t("effect.source")} summary={sourceKindLabel(sourceKind, t)}>
+      <EffectEditorSection title={t("effect.source")} summary={sourceKindLabel(sourceKind, t)} defaultOpen={false}>
         <EffectSourceEditor kind={sourceKind} onKindChange={setSourceKind} nodes={numeric} slots={numericSlots} showValidationErrors={validationAttempted} />
       </EffectEditorSection>
       <EffectPreview condition={preview.condition} actions={preview.actions} warnings={validationAttempted ? preview.warnings : []} />

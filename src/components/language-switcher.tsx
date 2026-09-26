@@ -11,13 +11,13 @@ export function LanguageSwitcher() {
       <Languages className="h-4 w-4 text-muted-foreground" />
       <span className="sr-only">{t("language.label")}</span>
       <select
-        className="bg-transparent text-sm outline-none"
+        className="bg-transparent text-sm text-foreground outline-none dark:[color-scheme:dark]"
         value={language}
         onChange={(event) => setLanguage(event.target.value as typeof language)}
         title={t("language.label")}
       >
         {languages.map((item) => (
-          <option key={item} value={item}>
+          <option key={item} value={item} className="bg-background text-foreground">
             {t(item === "uk" ? "language.uk" : "language.en")}
           </option>
         ))}

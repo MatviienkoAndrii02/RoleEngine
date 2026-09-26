@@ -386,7 +386,7 @@ function EffectEditor({ effect, nodes, slots, pending, rootLabel, onCancel, onDe
         </EffectEditorSection>
       )}
       {effect.operation !== "TRIGGERED" && (
-      <EffectEditorSection title={payloadSectionTitle(isNumeric, isPatch, t)} summary={payloadSummary(effect, isNumeric, isPatch, sourceKind, selectedPatchField, operation, nodes, slots, rootLabel, t)}>
+      <EffectEditorSection title={payloadSectionTitle(isNumeric, isPatch, t)} summary={payloadSummary(effect, isNumeric, isPatch, sourceKind, selectedPatchField, operation, nodes, slots, rootLabel, t)} defaultOpen={false}>
         {isNumeric && <SourceFields effect={effect} nodes={numericNodes} slots={numericSlots} kind={sourceKind} setKind={setSourceKind} showValidationErrors={validationAttempted} />}
         {!isNumeric && !isPatch && <CreatedNodeFields payload={initialPayload} operation={operation} type={createdType} setType={setCreatedType} />}
         {isPatch && <PatchFields fields={patchFields} selectedField={selectedPatchField} value={patchField} setValue={setPatchField} patch={effect.payload?.patch} mode={patchMode} setMode={setPatchMode} targetType={selectedTarget?.type} />}
