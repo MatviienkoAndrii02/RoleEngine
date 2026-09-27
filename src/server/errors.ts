@@ -24,6 +24,9 @@ export const apiErrorCodes = [
   "EFFECT_SCOPE_REQUIRED",
   "EMAIL_DELIVERY_FAILED",
   "EMAIL_DELIVERY_NOT_CONFIGURED",
+  "EMAIL_NOT_VERIFIED",
+  "EMAIL_VERIFICATION_INVALID",
+  "EMAIL_VERIFICATION_RATE_LIMITED",
   "FORBIDDEN",
   "INVALID_JSON",
   "JSON_INTEGRITY_COMMAND_INVALID",
@@ -165,6 +168,7 @@ function legacyErrorByMessage(message: string): AppError | null {
     "Numeric source and condition are required": appError("NUMERIC_SOURCE_CONDITION_REQUIRED", message),
     "Effect condition is required": appError("EFFECT_CONDITION_REQUIRED", message),
     "Password reset token is invalid or expired": appError("PASSWORD_RESET_INVALID", message, 400),
+    "Email verification token is invalid or expired": appError("EMAIL_VERIFICATION_INVALID", message, 400),
   };
 
   if (exact[message]) return exact[message] ?? null;

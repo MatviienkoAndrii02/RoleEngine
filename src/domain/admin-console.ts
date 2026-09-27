@@ -115,6 +115,7 @@ export type AdminUserSummary = {
   id: string;
   name: string | null;
   email: string;
+  emailVerifiedAt: string | null;
   username: string;
   createdAt: string;
   lastSeenAt: string | null;
@@ -205,6 +206,7 @@ export function isAdminUsersResponse(value: unknown): value is AdminUsersRespons
     && typeof user.id === "string"
     && (user.name === null || typeof user.name === "string")
     && typeof user.email === "string"
+    && (user.emailVerifiedAt === null || typeof user.emailVerifiedAt === "string")
     && typeof user.username === "string"
     && typeof user.createdAt === "string"
     && (user.lastSeenAt === null || typeof user.lastSeenAt === "string")

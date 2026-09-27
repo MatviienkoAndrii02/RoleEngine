@@ -33,6 +33,8 @@ Password reset email is delivered through Resend using localized plain-text and 
 
 Email delivery requires `APP_URL`, `RESEND_API_KEY`, and `EMAIL_FROM`. The `EMAIL_FROM` domain must be verified by the provider, and container/service deployments must explicitly pass all three variables to the application runtime.
 
+New registrations receive a one-time email-verification link. An unverified account can sign in and use access granted in existing workspaces, but server authorization blocks creation of a new workspace until `User.emailVerified` contains a timestamp. Migration `20260927133000_verify_existing_user_emails` marks every account that predates this policy as verified; production deployments must apply it with `npx prisma migrate deploy` before starting the updated application.
+
 ## Admin Console
 
 `/admin` (UI) and `/admin-api` (backend namespace) host the operations console: dashboard with real system/database health, health details, and database backups. Details, configuration and the exposure modes live in [docs/ADMIN_CONSOLE.md](docs/ADMIN_CONSOLE.md).

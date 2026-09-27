@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { assertEmailHeaderValue, buildPasswordResetEmail } from "@/server/email";
+import { assertEmailHeaderValue, buildEmailVerificationEmail, buildPasswordResetEmail } from "@/server/email";
 
 describe("password reset email", () => {
   it("builds localized plain-text and HTML alternatives", () => {
@@ -34,5 +34,18 @@ describe("password reset email", () => {
       /not a valid email header value/u,
     );
     assert.doesNotThrow(() => assertEmailHeaderValue("subject", "Reset your Role Engine password"));
+  });
+});
+
+describe("email verification email", () => {
+  it("builds localized plain-text and HTML alternatives", () => {
+    const verificationUrl = "https://roleengine.example/verify-email?token=verification-token";
+    const email = buildEmailVerificationEmail({ verificationUrl, language: "en", expiresInHours: 24 });
+
+    assert.equal(email.subject, "Verify your Role Engine email address");
+    assert.match(email.text, /valid for 24 hours/u);
+    assert.match(email.text, /verification-token/u);
+    assert.match(email.html, /Verify email address/u);
+    assert.match(email.html, /verification-token/u);
   });
 });

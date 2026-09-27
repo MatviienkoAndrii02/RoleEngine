@@ -7,6 +7,7 @@ import {
   createNodeCommandSchema,
   createWorkspaceCommandSchema,
   effectDefinitionSchema,
+  emailVerificationConfirmSchema,
   parseNodeData,
   removeWorkspaceMemberCommandSchema,
   registerAccountCommandSchema,
@@ -397,6 +398,12 @@ test("registration username preserves case while validating allowed characters",
     username: "Міра",
     password: "demo1234",
   }));
+});
+
+test("validates email verification confirmation tokens", () => {
+  assert.equal(emailVerificationConfirmSchema.parse({ token: " token-value " }).token, "token-value");
+  assert.throws(() => emailVerificationConfirmSchema.parse({ token: "" }));
+  assert.throws(() => emailVerificationConfirmSchema.parse({ token: "token", extra: true }));
 });
 
 test("validates json integrity command envelopes", () => {

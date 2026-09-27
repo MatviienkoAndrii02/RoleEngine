@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search, UserRound } from "lucide-react";
+import { MailWarning, RefreshCw, Search, UserRound } from "lucide-react";
 import { isAdminUsersResponse, type AdminUserSummary, type AdminUsersResponse } from "@/domain/admin-console";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -116,10 +116,18 @@ function UserCard({ user, language }: { user: AdminUserSummary; language: "uk" |
               <p className="text-xs text-muted-foreground">@{user.username}</p>
             </div>
           </div>
-          <Badge className={user.online ? "bg-emerald-100 text-emerald-900" : "bg-muted text-muted-foreground"}>
-            <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${user.online ? "bg-emerald-600" : "bg-muted-foreground/50"}`} />
-            {t(user.online ? "admin.users.online" : "admin.users.offline")}
-          </Badge>
+          <div className="flex flex-wrap gap-2">
+            {!user.emailVerifiedAt && (
+              <Badge className="bg-amber-100 text-amber-900">
+                <MailWarning className="mr-1 h-3 w-3" />
+                {t("admin.users.emailUnverified")}
+              </Badge>
+            )}
+            <Badge className={user.online ? "bg-emerald-100 text-emerald-900" : "bg-muted text-muted-foreground"}>
+              <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${user.online ? "bg-emerald-600" : "bg-muted-foreground/50"}`} />
+              {t(user.online ? "admin.users.online" : "admin.users.offline")}
+            </Badge>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">

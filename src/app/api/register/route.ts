@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { registerAccountCommandSchema } from "@/domain/validation";
+import { getLanguage } from "@/i18n/server";
+import { sendEmailVerificationForUser } from "@/server/actions/account";
 import { inputErrorResponse, parseJson } from "@/server/api-validation";
 import { appError } from "@/server/errors";
+import { logEvent } from "@/server/logger";
 
 export async function POST(request: Request) {
   try {
@@ -37,7 +40,24 @@ export async function POST(request: Request) {
       select: { id: true, email: true, username: true, name: true },
     });
 
-    return NextResponse.json(user, { status: 201 });
+    let verificationEmailSent = false;
+    let verificationToken: string | undefined;
+    try {
+      const delivery = await sendEmailVerificationForUser(user.id, await getLanguage(), false);
+      verificationEmailSent = !delivery.alreadyVerified;
+      verificationToken = delivery.verificationToken;
+    } catch (error) {
+      logEvent("warn", "email.verification_delivery_failed", {
+        userId: user.id,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+
+    return NextResponse.json({
+      ...user,
+      verificationEmailSent,
+      ...(process.env.NODE_ENV === "development" && verificationToken ? { verificationToken } : {}),
+    }, { status: 201 });
   } catch (error) {
     const uniqueAccountField = uniqueAccountFieldFromError(error);
     if (uniqueAccountField === "email") {

@@ -5,15 +5,16 @@ const prisma = new PrismaClient();
 
 async function main() {
   const passwordHash = await bcrypt.hash("demo1234", 12);
+  const seedVerifiedAt = new Date("2026-01-01T00:00:00.000Z");
   const gm = await prisma.user.upsert({
     where: { email: "gm@role.local" },
-    update: { name: "Demo Game Master", username: "gm", usernameKey: "gm", passwordHash },
-    create: { email: "gm@role.local", username: "gm", usernameKey: "gm", name: "Demo Game Master", passwordHash }
+    update: { name: "Demo Game Master", username: "gm", usernameKey: "gm", passwordHash, emailVerified: seedVerifiedAt },
+    create: { email: "gm@role.local", username: "gm", usernameKey: "gm", name: "Demo Game Master", passwordHash, emailVerified: seedVerifiedAt }
   });
   const player = await prisma.user.upsert({
     where: { email: "player@role.local" },
-    update: { name: "Demo Player", username: "player", usernameKey: "player", passwordHash },
-    create: { email: "player@role.local", username: "player", usernameKey: "player", name: "Demo Player", passwordHash }
+    update: { name: "Demo Player", username: "player", usernameKey: "player", passwordHash, emailVerified: seedVerifiedAt },
+    create: { email: "player@role.local", username: "player", usernameKey: "player", name: "Demo Player", passwordHash, emailVerified: seedVerifiedAt }
   });
 
   const workspace = await prisma.workspace.upsert({

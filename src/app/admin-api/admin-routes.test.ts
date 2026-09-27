@@ -60,7 +60,7 @@ const usersSnapshot: AdminUsersResponse = {
   generatedAt: "2026-09-24T12:00:00.000Z",
   onlineWindowSeconds: 300,
   users: [{
-    id: "user_1", name: "Example User", email: "user@example.com", username: "example", createdAt: "2026-01-01T00:00:00.000Z",
+    id: "user_1", name: "Example User", email: "user@example.com", emailVerifiedAt: "2026-01-01T00:00:00.000Z", username: "example", createdAt: "2026-01-01T00:00:00.000Z",
     lastSeenAt: "2026-09-24T11:59:00.000Z", online: true, createdWorkspaceCount: 1, memberWorkspaceCount: 2, characterCount: 4, templateCount: 3,
   }],
 };

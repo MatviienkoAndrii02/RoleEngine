@@ -11,18 +11,24 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { WorkspaceSettingsCard } from "@/components/workspaces/workspace-settings-card";
+import { EmailVerificationNotice } from "@/components/account/email-verification-notice";
 
 type WorkspaceSearchParams = {
   workspaceError?: string;
+  emailVerified?: string;
 };
 
 export default async function WorkspacesPage({ searchParams }: { searchParams: Promise<WorkspaceSearchParams> }) {
   const user = await requirePageGM("/workspaces");
   const { t } = await getTranslator();
   const params = await searchParams;
-  const [workspaces, activeWorkspace] = await Promise.all([
+  const [workspaces, activeWorkspace, account] = await Promise.all([
     getUserWorkspaces(user.id),
     getActiveWorkspace(user.id),
+    prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { email: true, emailVerified: true },
+    }),
   ]);
   const activeMemberships = activeWorkspace
     ? await prisma.workspaceMembership.findMany({
@@ -40,18 +46,28 @@ export default async function WorkspacesPage({ searchParams }: { searchParams: P
         <p className="text-sm text-muted-foreground">{t("workspace.subtitle")}</p>
       </div>
 
+      {!account.emailVerified && <EmailVerificationNotice email={account.email} />}
+      {params.emailVerified === "1" && account.emailVerified && (
+        <p role="status" className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-800">
+          {t("workspace.emailVerifiedSuccess")}
+        </p>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>{t("workspace.create")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form action={createWorkspace} className="grid gap-3 sm:grid-cols-[1fr_auto]">
-            <Input name="name" required maxLength={200} placeholder={t("workspace.namePlaceholder")} />
-            <Button type="submit">
+            <Input name="name" required maxLength={200} placeholder={t("workspace.namePlaceholder")} disabled={!account.emailVerified} />
+            <Button type="submit" disabled={!account.emailVerified}>
               <Plus className="h-4 w-4" />
               {t("common.create")}
             </Button>
           </form>
+          {!account.emailVerified && (
+            <p className="mt-3 text-sm text-muted-foreground">{t("workspace.emailVerificationRequired")}</p>
+          )}
         </CardContent>
       </Card>
 

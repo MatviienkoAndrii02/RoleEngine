@@ -7,7 +7,7 @@ type UserCounts = Pick<AdminUserSummary, "createdWorkspaceCount" | "memberWorksp
 export async function getAdminUsers(now = new Date()): Promise<AdminUsersResponse> {
   const [users, workspaces] = await Promise.all([
     prisma.user.findMany({
-      select: { id: true, name: true, email: true, username: true, createdAt: true, lastSeenAt: true },
+      select: { id: true, name: true, email: true, emailVerified: true, username: true, createdAt: true, lastSeenAt: true },
       orderBy: [{ name: "asc" }, { email: "asc" }],
     }),
     prisma.workspace.findMany({
@@ -52,6 +52,7 @@ export async function getAdminUsers(now = new Date()): Promise<AdminUsersRespons
     id: user.id,
     name: user.name,
     email: user.email,
+    emailVerifiedAt: user.emailVerified?.toISOString() ?? null,
     username: user.username,
     createdAt: user.createdAt.toISOString(),
     lastSeenAt: user.lastSeenAt?.toISOString() ?? null,

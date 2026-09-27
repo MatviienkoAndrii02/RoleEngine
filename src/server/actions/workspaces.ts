@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_WORKSPACE_COOKIE, requireUser, requireWorkspaceRole } from "@/server/authz";
+import { requireVerifiedEmail } from "@/server/actions/account";
 import { safeRevalidatePath as revalidatePath } from "@/server/revalidate";
 import {
   addWorkspaceMemberCommandSchema,
@@ -43,6 +44,7 @@ export async function createWorkspace(formData: FormData) {
   const parsed = createWorkspaceCommandSchema.parse({
     name: formData.get("name"),
   });
+  await requireVerifiedEmail(actor.id);
   const workspace = await prisma.$transaction(async (tx) => {
     const created = await tx.workspace.create({
       data: {

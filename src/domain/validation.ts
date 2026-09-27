@@ -544,3 +544,7 @@ export const passwordResetConfirmSchema = z.object({
   token: z.string().trim().min(1).max(200),
   newPassword: z.string().trim().min(8).max(200),
 }).strict();
+
+export const emailVerificationConfirmSchema = z.object({
+  token: z.string().trim().min(1).max(200),
+}).strict();
