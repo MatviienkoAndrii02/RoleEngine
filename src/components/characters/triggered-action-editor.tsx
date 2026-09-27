@@ -2,7 +2,7 @@
 
 import { useState, type Dispatch, type DragEvent, type SetStateAction } from "react";
 import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
-import type { EffectSource, TriggeredEffectAction } from "@/domain/effects";
+import type { TriggeredEffectAction } from "@/domain/effects";
 import type { CharacterNodeModel, NodeType } from "@/domain/nodes";
 import type { TemplateSlotModel } from "@/domain/template-slots";
 import { getPatchFields, getNumericPatchFields, type PatchFieldDefinition } from "@/domain/node-patches";
@@ -105,8 +105,30 @@ export function TriggeredActionEditor({
         defaultOpen={defaultOpen}
         error={rowError}
       >
-        <div className="flex items-start gap-2">
-          <div className="flex shrink-0 flex-col gap-1">
+        <div className="space-y-4">
+          <label className="block w-full space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t("effect.action")}</span>
+            <select
+              name={`${fieldPrefix(fieldNamespace, index)}-kind`}
+              value={row.kind}
+              onChange={(event) => {
+                const nextKind = event.target.value as TriggeredActionRow["kind"];
+                if (nextKind === row.kind) return;
+                if (hasActionDraftData(row) && !window.confirm(t("effect.changeActionTypeConfirm"))) {
+                  event.target.value = row.kind;
+                  return;
+                }
+                updateTriggeredActionRow(setRows, row.id, { kind: nextKind, targetNodeId: "", patchField: "" });
+              }}
+              className={selectClass}
+            >
+              <option value="NUMERIC">{t("effect.setNumericField")}</option>
+              <option value="CREATE_NODE">{t("effect.createNode")}</option>
+              <option value="CREATE_GROUP">{t("effect.createGroup")}</option>
+              <option value="PATCH_NODE_PROPS">{t("effect.patchNode")}</option>
+            </select>
+          </label>
+          <div className="flex items-center justify-start gap-1">
             <Button
               type="button"
               variant="outline"
@@ -122,66 +144,44 @@ export function TriggeredActionEditor({
             >
               <GripVertical className="h-4 w-4" />
             </Button>
-            <div className="flex gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                disabled={index === 0}
-                onClick={() => moveTriggeredActionByOffset(setRows, row.id, -1)}
-                aria-label={t("effect.moveActionUp")}
-                title={t("effect.moveActionUp")}
-              >
-                <ChevronUp className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                disabled={index === rowsCount - 1}
-                onClick={() => moveTriggeredActionByOffset(setRows, row.id, 1)}
-                aria-label={t("effect.moveActionDown")}
-                title={t("effect.moveActionDown")}
-              >
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              disabled={index === 0}
+              onClick={() => moveTriggeredActionByOffset(setRows, row.id, -1)}
+              aria-label={t("effect.moveActionUp")}
+              title={t("effect.moveActionUp")}
+            >
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              disabled={index === rowsCount - 1}
+              onClick={() => moveTriggeredActionByOffset(setRows, row.id, 1)}
+              aria-label={t("effect.moveActionDown")}
+              title={t("effect.moveActionDown")}
+            >
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              disabled={rowsCount === 1}
+              className="h-9 w-9 shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
+              onClick={() => setRows((current) => current.length > 1 ? current.filter((item) => item.id !== row.id) : current)}
+              aria-label={t("effect.removeAction")}
+              title={t("effect.removeAction")}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <select
-                name={`${fieldPrefix(fieldNamespace, index)}-kind`}
-                value={row.kind}
-                onChange={(event) => {
-                  const nextKind = event.target.value as TriggeredActionRow["kind"];
-                  if (nextKind === row.kind) return;
-                  if (hasActionDraftData(row) && !window.confirm(t("effect.changeActionTypeConfirm"))) {
-                    event.target.value = row.kind;
-                    return;
-                  }
-                  updateTriggeredActionRow(setRows, row.id, { kind: nextKind, targetNodeId: "", patchField: "" });
-                }}
-                className={selectClass}
-              >
-                <option value="NUMERIC">{t("effect.setNumericField")}</option>
-                <option value="CREATE_NODE">{t("effect.createNode")}</option>
-                <option value="CREATE_GROUP">{t("effect.createGroup")}</option>
-                <option value="PATCH_NODE_PROPS">{t("effect.patchNode")}</option>
-              </select>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={rowsCount === 1}
-                className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
-                onClick={() => setRows((current) => current.length > 1 ? current.filter((item) => item.id !== row.id) : current)}
-              >
-                <Trash2 className="h-4 w-4" />
-                {t("effect.removeAction")}
-              </Button>
-            </div>
+          <div className="min-w-0 space-y-4">
             {row.kind === "NUMERIC" && (
               <NumericActionFields row={row} index={index} numericNodes={numericNodes} numericSlotOptions={numericSlotOptions} originalAction={originalAction?.kind === "NUMERIC" ? originalAction : undefined} fieldNamespace={fieldNamespace} setRows={setRows} showValidationErrors={showValidationErrors} />
             )}
@@ -205,21 +205,27 @@ function NumericActionFields({ row, index, numericNodes, numericSlotOptions, ori
   const target = selected.kind === "node" ? numericNodes.find((node) => node.id === selected.id) ?? null : null;
   const fields = target ? getNumericPatchFields(target.type) : commonNumericFields;
   return (
-    <div className="space-y-3">
-      <NodePicker name={`${prefix}-targetNodeId`} nodes={numericNodes} value={row.targetNodeId} onChange={(value) => updateTriggeredActionRow(setRows, row.id, { targetNodeId: value })} extraOptions={numericSlotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectTarget")} compact />
-      <div className="grid gap-2 sm:grid-cols-2">
-        <select name={`${prefix}-field`} required defaultValue={originalAction?.field ?? "value"} className={selectClass}>{fields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}</select>
-        <select name={`${prefix}-operation`} required defaultValue={originalAction?.operation ?? "ADD"} className={selectClass}>{numericActions.map((operation) => <option key={operation} value={operation}>{triggerActionLabel(operation, t)}</option>)}</select>
+    <div className="space-y-4">
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium">{t("effect.target")}</span>
+        <NodePicker name={`${prefix}-targetNodeId`} nodes={numericNodes} value={row.targetNodeId} onChange={(value) => updateTriggeredActionRow(setRows, row.id, { targetNodeId: value })} extraOptions={numericSlotOptions} allowedTypes={["NUMBER", "BAR"]} required placeholder={t("effect.selectTarget")} compact />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1.5"><span className="text-sm font-medium">{t("effect.numericField")}</span><select name={`${prefix}-field`} required defaultValue={originalAction?.field ?? "value"} className={selectClass}>{fields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}</select></label>
+        <label className="block space-y-1.5"><span className="text-sm font-medium">{t("effect.operation")}</span><select name={`${prefix}-operation`} required defaultValue={originalAction?.operation ?? "ADD"} className={selectClass}>{numericActions.map((operation) => <option key={operation} value={operation}>{triggerActionLabel(operation, t)}</option>)}</select></label>
       </div>
-      <EffectSourceEditor
-        kind={row.sourceKind}
-        onKindChange={(sourceKind) => updateTriggeredActionRow(setRows, row.id, { sourceKind })}
-        nodes={numericNodes}
-        extraOptions={numericSlotOptions}
-        prefix={prefix}
-        defaultSource={originalAction?.source}
-        showValidationErrors={showValidationErrors}
-      />
+      <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+        <div className="text-sm font-medium">{t("effect.source")}</div>
+        <EffectSourceEditor
+          kind={row.sourceKind}
+          onKindChange={(sourceKind) => updateTriggeredActionRow(setRows, row.id, { sourceKind })}
+          nodes={numericNodes}
+          extraOptions={numericSlotOptions}
+          prefix={prefix}
+          defaultSource={originalAction?.source}
+          showValidationErrors={showValidationErrors}
+        />
+      </div>
     </div>
   );
 }
@@ -230,16 +236,35 @@ function CreateActionFields({ row, index, containers, containerSlotOptions, root
   const type = row.kind === "CREATE_GROUP" ? "GROUP" : row.createdType;
   const data = originalAction?.createNode.data ?? {};
   return (
-    <div className="space-y-3">
-      <NodePicker name={`${prefix}-parentNodeId`} nodes={containers} value={row.targetNodeId || "__ROOT__"} onChange={(value) => updateTriggeredActionRow(setRows, row.id, { targetNodeId: value })} extraOptions={containerSlotOptions} allowedTypes={["CONTAINER", "GROUP"]} includeRoot rootValue="__ROOT__" rootLabel={rootLabel} required placeholder={t("effect.place")} compact />
-      <Input name={`${prefix}-createdName`} required defaultValue={originalAction?.createNode.name ?? ""} placeholder={t("effect.createdNodeName")} />
-      {row.kind === "CREATE_NODE" && <select name={`${prefix}-createdType`} value={row.createdType} onChange={(event) => updateTriggeredActionRow(setRows, row.id, { createdType: event.target.value as NodeType })} className={selectClass}>{creatableNodeTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select>}
-      <Input name={`${prefix}-createdDescription`} defaultValue={String(data.description ?? "")} placeholder={t("common.description")} />
-      <NodeIconPicker type={type} name={`${prefix}-icon`} defaultValue={typeof data.icon === "string" ? data.icon : undefined} />
-      <NodeAccentColorPicker name={`${prefix}-accentColor`} defaultValue={typeof data.accentColor === "string" ? data.accentColor : undefined} />
-      {type === "NUMBER" && <Input name={`${prefix}-createdValue`} type="number" step="any" defaultValue={String(data.value ?? "")} placeholder={t("common.value")} />}
-      {type === "BAR" && <div className="grid grid-cols-2 gap-2"><Input name={`${prefix}-createdCurrent`} type="number" step="any" defaultValue={String(data.current ?? "")} placeholder={t("node.current")} /><Input name={`${prefix}-createdMax`} type="number" step="any" defaultValue={String(data.max ?? "")} placeholder={t("node.maximum")} /></div>}
-      {type === "TEXT" && <textarea name={`${prefix}-createdText`} defaultValue={String(data.text ?? "")} className="min-h-24 w-full resize-y rounded-md border bg-background p-3 text-sm" placeholder={t("node.text")} />}
+    <div className="space-y-4">
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium">{t("effect.place")}</span>
+        <NodePicker name={`${prefix}-parentNodeId`} nodes={containers} value={row.targetNodeId || "__ROOT__"} onChange={(value) => updateTriggeredActionRow(setRows, row.id, { targetNodeId: value })} extraOptions={containerSlotOptions} allowedTypes={["CONTAINER", "GROUP"]} includeRoot rootValue="__ROOT__" rootLabel={rootLabel} required placeholder={t("effect.place")} compact />
+      </label>
+      {row.kind === "CREATE_NODE" && (
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium">{t("common.type")}</span>
+          <select name={`${prefix}-createdType`} value={row.createdType} onChange={(event) => updateTriggeredActionRow(setRows, row.id, { createdType: event.target.value as NodeType })} className={selectClass}>{creatableNodeTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+        </label>
+      )}
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium">{t("effect.createdNodeName")}</span>
+        <Input name={`${prefix}-createdName`} required defaultValue={originalAction?.createNode.name ?? ""} placeholder={t("effect.createdNodeName")} />
+      </label>
+      {type === "NUMBER" && <label className="block space-y-1.5"><span className="text-sm font-medium">{t("common.value")}</span><Input name={`${prefix}-createdValue`} type="number" step="any" defaultValue={String(data.value ?? "")} placeholder={t("common.value")} /></label>}
+      {type === "BAR" && <div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1.5"><span className="text-sm font-medium">{t("node.current")}</span><Input name={`${prefix}-createdCurrent`} type="number" step="any" defaultValue={String(data.current ?? "")} placeholder={t("node.current")} /></label><label className="block space-y-1.5"><span className="text-sm font-medium">{t("node.maximum")}</span><Input name={`${prefix}-createdMax`} type="number" step="any" defaultValue={String(data.max ?? "")} placeholder={t("node.maximum")} /></label></div>}
+      {type === "TEXT" && <label className="block space-y-1.5"><span className="text-sm font-medium">{t("node.text")}</span><textarea name={`${prefix}-createdText`} defaultValue={String(data.text ?? "")} className="min-h-24 w-full resize-y rounded-md border bg-background p-3 text-sm" placeholder={t("node.text")} /></label>}
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium">{t("common.description")}</span>
+        <textarea name={`${prefix}-createdDescription`} defaultValue={String(data.description ?? "")} className="min-h-20 w-full resize-y rounded-md border bg-background p-3 text-sm" placeholder={t("common.description")} />
+      </label>
+      <details className="rounded-md border bg-muted/20 p-3">
+        <summary className="cursor-pointer text-sm font-medium">{t("effect.advancedOptions")}</summary>
+        <div className="mt-4 space-y-4">
+          <NodeIconPicker type={type} name={`${prefix}-icon`} defaultValue={typeof data.icon === "string" ? data.icon : undefined} />
+          <NodeAccentColorPicker name={`${prefix}-accentColor`} defaultValue={typeof data.accentColor === "string" ? data.accentColor : undefined} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -254,10 +279,16 @@ function PatchActionFields({ row, index, nodes, slots, allSlotOptions, originalA
   const selectedField = fields.find((field) => field.field === row.patchField) ?? fields[0] ?? null;
   const patch = originalAction?.patch ?? {};
   return (
-    <div className="space-y-3">
-      <NodePicker name={`${prefix}-patchTargetNodeId`} nodes={nodes} value={row.targetNodeId} onChange={(value) => updateTriggeredActionRow(setRows, row.id, { targetNodeId: value, patchField: "" })} extraOptions={allSlotOptions} required placeholder={t("effect.patchTarget")} compact />
-      <select name={`${prefix}-patchField`} required value={selectedField?.field ?? ""} onChange={(event) => updateTriggeredActionRow(setRows, row.id, { patchField: event.target.value })} className={selectClass}>{fields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}</select>
-      {selectedField && <PrefixedStaticPatchField field={selectedField} patch={patch} targetType={target?.type} prefix={prefix} />}
+    <div className="space-y-4">
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium">{t("effect.patchTarget")}</span>
+        <NodePicker name={`${prefix}-patchTargetNodeId`} nodes={nodes} value={row.targetNodeId} onChange={(value) => updateTriggeredActionRow(setRows, row.id, { targetNodeId: value, patchField: "" })} extraOptions={allSlotOptions} required placeholder={t("effect.patchTarget")} compact />
+      </label>
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium">{t("effect.patchField")}</span>
+        <select name={`${prefix}-patchField`} required value={selectedField?.field ?? ""} onChange={(event) => updateTriggeredActionRow(setRows, row.id, { patchField: event.target.value })} className={selectClass}>{fields.map((field) => <option key={field.field} value={field.field}>{t(field.labelKey)}</option>)}</select>
+      </label>
+      {selectedField && <div className="rounded-md border bg-muted/20 p-3"><PrefixedStaticPatchField field={selectedField} patch={patch} targetType={target?.type} prefix={prefix} /></div>}
     </div>
   );
 }
