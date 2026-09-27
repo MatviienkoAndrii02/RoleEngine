@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { clearLoginFailureState } from "@/auth";
+import { defaultLanguage, type Language } from "@/i18n/translations";
 import { requireUser } from "@/server/authz";
 import { appError } from "@/server/errors";
 import { sendPasswordResetEmail } from "@/server/email";
@@ -88,7 +89,7 @@ export async function issuePasswordResetToken(identifier: string) {
   return { userId: user.id, email: user.email, token };
 }
 
-export async function requestPasswordReset(identifier: string) {
+export async function requestPasswordReset(identifier: string, language: Language = defaultLanguage) {
   const issued = await issuePasswordResetToken(identifier);
   if (!issued) return { ok: true, resetToken: undefined };
 
@@ -97,7 +98,12 @@ export async function requestPasswordReset(identifier: string) {
     throw appError("EMAIL_DELIVERY_NOT_CONFIGURED", "Password reset email delivery is not configured", 503);
   }
   const resetUrl = `${appUrl}/login/reset-password?token=${encodeURIComponent(issued.token)}`;
-  const delivery = await sendPasswordResetEmail({ recipient: issued.email, resetUrl });
+  const delivery = await sendPasswordResetEmail({
+    recipient: issued.email,
+    resetUrl,
+    language,
+    expiresInMinutes: passwordResetTtlMs / (60 * 1000),
+  });
   return { ok: true, resetToken: delivery?.delivery === "development" ? issued.token : undefined };
 }
 

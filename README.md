@@ -27,6 +27,12 @@ Authorization is role-based:
 
 Every mutation writes an `AuditLog` entry with actor, entity, old value, new value, and metadata.
 
+## Transactional email
+
+Password reset email is delivered through Resend using localized plain-text and HTML alternatives. The provider must serialize every current and future message as RFC 5322/MIME; application code must not assemble raw headers. `From`, `To`, `Reply-To`, and `Subject` values must reject CR/LF, HTML values must be escaped, and reset links or tokens must never be logged or written to audit records. New email templates belong in the shared server email boundary, require both `uk` and `en` copy, and need tests for both alternatives and header-injection protection.
+
+Email delivery requires `APP_URL`, `RESEND_API_KEY`, and `EMAIL_FROM`. The `EMAIL_FROM` domain must be verified by the provider, and container/service deployments must explicitly pass all three variables to the application runtime.
+
 ## Admin Console
 
 `/admin` (UI) and `/admin-api` (backend namespace) host the operations console: dashboard with real system/database health, health details, and database backups. Details, configuration and the exposure modes live in [docs/ADMIN_CONSOLE.md](docs/ADMIN_CONSOLE.md).
